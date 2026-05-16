@@ -29,6 +29,13 @@
         <td><span class="badge">{{ r.punch_type }}</span></td>
         <td class="row" style="gap:8px">
           <form method="post" action="/attendance/pending/{{ r.id }}/approve">
+            {% if r.source == 'missing_checkout' %}
+              <div style="width:100%;margin-bottom:8px;line-height:1.6">
+                <div style="color:#ffd36a;font-weight:700">تنبيه: الموظف لم يسجل ضربة خروج حتى الساعة 23:59.</div>
+                <div style="opacity:.9">يرجى إدخال وقت انتهاء العمل الفعلي بصيغة 24 ساعة، مثال: 17:30 أو 23:59.</div>
+              </div>
+              <input type="time" step="1" name="checkout_time" value="{{ r.ts[11:19] }}" required style="min-width:130px">
+            {% endif %}
             <button type="submit">{{ t('approve') }}</button>
           </form>
           <form method="post" action="/attendance/pending/{{ r.id }}/reject">
