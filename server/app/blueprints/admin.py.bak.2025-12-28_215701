@@ -1,0 +1,450 @@
+from __future__ import annotations
+import os, json, datetime
+from flask import Blueprint, render_template, request, redirect, url_for, flash, send_file, current_app
+from ..security import login_required, hash_password
+from ..rbac import require_perm
+from ..db import get_db
+from ..audit import audit
+from ..utils.net import tcp_ping, grade_latency
+from ..utils.backup import create_backup, rotate_backups
+
+bp = Blueprint("admin", __name__, url_prefix="/admin")
+
+@bp.get("/branches")
+@login_required
+@require_perm("branches.manage")
+def branches():
+    db = get_db()
+    rows = db.execute("SELECT * FROM branches ORDER BY name").fetchall()
+    return render_template("admin/branches.html", branches=rows)
+
+@bp.post("/branches/create")
+@login_required
+@require_perm("branches.manage")
+def branches_create():
+    name = (request.form.get("name") or "").strip()
+    if not name:
+        flash("Name required", "error")
+        return redirect(url_for("admin.branches"))
+    db = get_db()
+    db.execute("INSERT INTO branches(name) VALUES(?)", (name,))
+    db.commit()
+    audit("branches.create", {"name": name})
+    flash("Saved", "ok")
+    return redirect(url_for("admin.branches"))
+
+@bp.post("/branches/<int:branch_id>/update")
+@login_required
+@require_perm("branches.manage")
+def branches_update(branch_id: int):
+    name = (request.form.get("name") or "").strip()
+    db = get_db()
+    old = db.execute("SELECT * FROM branches WHERE id=?", (branch_id,)).fetchone()
+    db.execute("UPDATE branches SET name=? WHERE id=?", (name, branch_id))
+    db.commit()
+    audit("branches.update", {"branch_id": branch_id, "old": dict(old) if old else None, "new": {"name": name}})
+    flash("Saved", "ok")
+    return redirect(url_for("admin.branches"))
+
+@bp.post("/branches/<int:branch_id>/delete")
+@login_required
+@require_perm("branches.manage")
+def branches_delete(branch_id: int):
+    db = get_db()
+    old = db.execute("SELECT * FROM branches WHERE id=?", (branch_id,)).fetchone()
+    db.execute("DELETE FROM branches WHERE id=?", (branch_id,))
+    db.commit()
+    audit("branches.delete", {"branch_id": branch_id, "old": dict(old) if old else None})
+    flash("Deleted", "ok")
+    return redirect(url_for("admin.branches"))
+
+@bp.get("/employees")
+@login_required
+@require_perm("employees.manage")
+def employees():
+    db = get_db()
+    rows = db.execute(
+        "SELECT e.*, group_concat(r.name, ', ') AS roles "
+        "FROM employees e "
+        "LEFT JOIN employee_roles er ON er.employee_id=e.id "
+        "LEFT JOIN roles r ON r.id=er.role_id "
+        "GROUP BY e.id "
+        "ORDER BY CAST(e.employee_id AS INTEGER) ASC"
+    ).fetchall()
+    roles = db.execute("SELECT * FROM roles ORDER BY name").fetchall()
+    s30_devices = db.execute("SELECT * FROM devices WHERE device_type='s30' AND is_active=1 ORDER BY name").fetchall()
+    cashiers = db.execute("SELECT * FROM devices WHERE device_type='cashier_pc' AND is_active=1 ORDER BY name").fetchall()
+    return render_template("admin/employees.html", employees=rows, roles=roles, s30_devices=s30_devices, cashiers=cashiers)
+
+@bp.post("/employees/create")
+@login_required
+@require_perm("employees.manage")
+def employees_create():
+    employee_id = (request.form.get("employee_id") or "").strip()
+    name = (request.form.get("name") or "").strip()
+    username = (request.form.get("username") or "").strip()
+    card_rfid = (request.form.get("card_rfid") or "").strip()
+    password = (request.form.get("password") or "").strip()
+    s30_password = (request.form.get("s30_password") or "").strip()
+    role_ids = request.form.getlist("role_ids")
+
+    if not employee_id or not name or not username:
+        flash("Employee ID, name, username required", "error")
+        return redirect(url_for("admin.employees"))
+    if password and (not password.isdigit() or len(password) != 6):
+        flash("Password must be 6 digits", "error")
+        return redirect(url_for("admin.employees"))
+    if s30_password and (not s30_password.isdigit() or len(s30_password) != 6):
+        flash("S30 password must be 6 digits", "error")
+        return redirect(url_for("admin.employees"))
+
+    db = get_db()
+    db.execute(
+        "INSERT INTO employees(employee_id,name,username,password_hash,s30_password,card_rfid,is_active,is_superadmin) "
+        "VALUES(?,?,?,?,?,?,1,0)",
+        (employee_id, name, username, hash_password(password or "000000"), s30_password, card_rfid)
+    )
+    eid = db.execute("SELECT id FROM employees WHERE username=?", (username,)).fetchone()["id"]
+    for rid in role_ids:
+        db.execute("INSERT OR IGNORE INTO employee_roles(employee_id,role_id) VALUES(?,?)", (eid, int(rid)))
+    db.commit()
+    audit("employees.create", {"employee_id": employee_id, "username": username})
+    flash("Saved", "ok")
+    return redirect(url_for("admin.employees"))
+
+@bp.post("/employees/<int:emp_row_id>/update")
+@login_required
+@require_perm("employees.manage")
+def employees_update(emp_row_id: int):
+    db = get_db()
+    old = db.execute("SELECT * FROM employees WHERE id=?", (emp_row_id,)).fetchone()
+    employee_id = (request.form.get("employee_id") or "").strip()
+    name = (request.form.get("name") or "").strip()
+    username = (request.form.get("username") or "").strip()
+    card_rfid = (request.form.get("card_rfid") or "").strip()
+    password = (request.form.get("password") or "").strip()
+    s30_password = (request.form.get("s30_password") or "").strip()
+    is_active = 1 if request.form.get("is_active") == "1" else 0
+    role_ids = [int(x) for x in request.form.getlist("role_ids")]
+
+    if password and (not password.isdigit() or len(password) != 6):
+        flash("Password must be 6 digits", "error")
+        return redirect(url_for("admin.employees"))
+    if s30_password and (not s30_password.isdigit() or len(s30_password) != 6):
+        flash("S30 password must be 6 digits", "error")
+        return redirect(url_for("admin.employees"))
+
+    if password:
+        ph = hash_password(password)
+        db.execute("UPDATE employees SET employee_id=?, name=?, username=?, card_rfid=?, password_hash=?, s30_password=?, is_active=? WHERE id=?",
+                   (employee_id, name, username, card_rfid, ph, s30_password, is_active, emp_row_id))
+    else:
+        db.execute("UPDATE employees SET employee_id=?, name=?, username=?, card_rfid=?, s30_password=?, is_active=? WHERE id=?",
+                   (employee_id, name, username, card_rfid, s30_password, is_active, emp_row_id))
+
+    db.execute("DELETE FROM employee_roles WHERE employee_id=?", (emp_row_id,))
+    for rid in role_ids:
+        db.execute("INSERT OR IGNORE INTO employee_roles(employee_id,role_id) VALUES(?,?)", (emp_row_id, rid))
+    db.commit()
+    audit("employees.update", {"id": emp_row_id, "old": dict(old) if old else None})
+    flash("Saved", "ok")
+    return redirect(url_for("admin.employees"))
+
+@bp.post("/employees/<int:emp_row_id>/delete")
+@login_required
+@require_perm("employees.manage")
+def employees_delete(emp_row_id: int):
+    db = get_db()
+    old = db.execute("SELECT * FROM employees WHERE id=?", (emp_row_id,)).fetchone()
+    db.execute("DELETE FROM employees WHERE id=?", (emp_row_id,))
+    db.commit()
+    audit("employees.delete", {"id": emp_row_id, "old": dict(old) if old else None})
+    flash("Deleted", "ok")
+    return redirect(url_for("admin.employees"))
+
+@bp.post("/employees/sync")
+@login_required
+@require_perm("devices.manage")
+def employees_sync():
+    import requests
+    db = get_db()
+    employees = [dict(r) for r in db.execute("SELECT employee_id,name,card_rfid,s30_password,is_active FROM employees WHERE is_active=1 ORDER BY CAST(employee_id AS INTEGER)").fetchall()]
+    agents = db.execute("SELECT * FROM devices WHERE device_type='cashier_pc' AND is_active=1 AND agent_base_url IS NOT NULL AND agent_base_url<>''").fetchall()
+    if not agents:
+        flash("No agents configured", "error")
+        return redirect(url_for("admin.employees"))
+
+    ok, fail = 0, 0
+    for a in agents:
+        url = a["agent_base_url"].rstrip("/") + "/sync/users"
+        try:
+            r = requests.post(url, json={"employees": employees}, headers={"X-Aljoud-Agent-Secret": current_app.config.get("AGENT_SHARED_SECRET","")}, timeout=12)
+            if r.status_code == 200:
+                ok += 1
+            else:
+                fail += 1
+        except Exception:
+            fail += 1
+
+    audit("devices.sync_users", {"ok": ok, "fail": fail})
+    flash(f"Sync result: ok={ok} fail={fail}", "ok" if fail == 0 else "error")
+    return redirect(url_for("admin.employees"))
+
+@bp.get("/devices")
+@login_required
+@require_perm("devices.manage")
+def devices():
+    db = get_db()
+    rows = db.execute("SELECT d.*, b.name AS branch_name FROM devices d LEFT JOIN branches b ON b.id=d.branch_id ORDER BY d.device_type, d.name").fetchall()
+    branches = db.execute("SELECT * FROM branches ORDER BY name").fetchall()
+    return render_template("admin/devices.html", devices=rows, branches=branches)
+
+@bp.post("/devices/create")
+@login_required
+@require_perm("devices.manage")
+def devices_create():
+    name = (request.form.get("name") or "").strip()
+    device_type = (request.form.get("device_type") or "").strip()
+    ip = (request.form.get("ip") or "").strip()
+    port = (request.form.get("port") or "").strip()
+    port = int(port) if port else None
+    agent_base_url = (request.form.get("agent_base_url") or "").strip()
+    branch_id = request.form.get("branch_id")
+    branch_id = int(branch_id) if branch_id else None
+    notes = (request.form.get("notes") or "").strip()
+    if not name or not device_type:
+        flash("Name and type required", "error")
+        return redirect(url_for("admin.devices"))
+    db = get_db()
+    db.execute("INSERT INTO devices(name,device_type,ip,port,agent_base_url,branch_id,notes,is_active) VALUES(?,?,?,?,?,?,?,1)",
+               (name, device_type, ip, port, agent_base_url, branch_id, notes))
+    db.commit()
+    audit("devices.create", {"name": name, "type": device_type})
+    flash("Saved", "ok")
+    return redirect(url_for("admin.devices"))
+
+@bp.post("/devices/<int:dev_id>/update")
+@login_required
+@require_perm("devices.manage")
+def devices_update(dev_id: int):
+    db = get_db()
+    old = db.execute("SELECT * FROM devices WHERE id=?", (dev_id,)).fetchone()
+    name = (request.form.get("name") or "").strip()
+    ip = (request.form.get("ip") or "").strip()
+    port = (request.form.get("port") or "").strip()
+    port = int(port) if port else None
+    agent_base_url = (request.form.get("agent_base_url") or "").strip()
+    branch_id = request.form.get("branch_id")
+    branch_id = int(branch_id) if branch_id else None
+    is_active = 1 if request.form.get("is_active") == "1" else 0
+    notes = (request.form.get("notes") or "").strip()
+    db.execute("UPDATE devices SET name=?, ip=?, port=?, agent_base_url=?, branch_id=?, is_active=?, notes=? WHERE id=?",
+               (name, ip, port, agent_base_url, branch_id, is_active, notes, dev_id))
+    db.commit()
+    audit("devices.update", {"id": dev_id, "old": dict(old) if old else None})
+    flash("Saved", "ok")
+    return redirect(url_for("admin.devices"))
+
+@bp.post("/devices/<int:dev_id>/delete")
+@login_required
+@require_perm("devices.manage")
+def devices_delete(dev_id: int):
+    db = get_db()
+    old = db.execute("SELECT * FROM devices WHERE id=?", (dev_id,)).fetchone()
+    db.execute("DELETE FROM devices WHERE id=?", (dev_id,))
+    db.commit()
+    audit("devices.delete", {"id": dev_id, "old": dict(old) if old else None})
+    flash("Deleted", "ok")
+    return redirect(url_for("admin.devices"))
+
+@bp.post("/devices/<int:dev_id>/test")
+@login_required
+@require_perm("devices.manage")
+def devices_test(dev_id: int):
+    db = get_db()
+    d = db.execute("SELECT * FROM devices WHERE id=?", (dev_id,)).fetchone()
+    if not d:
+        flash("Not found", "error")
+        return redirect(url_for("admin.devices"))
+    host = d["ip"] or ""
+    port = d["port"] or (4370 if d["device_type"] == "s30" else 80)
+    ok, ms = tcp_ping(host, int(port))
+    grade = grade_latency(ms)
+    db.execute("UPDATE devices SET last_seen=?, last_latency_ms=? WHERE id=?",
+               (datetime.datetime.now().isoformat(timespec="seconds") if ok else None, ms if ok else None, dev_id))
+    db.commit()
+    audit("devices.test", {"id": dev_id, "ok": ok, "ms": ms, "grade": grade})
+    if ok:
+        flash(f"OK - {grade} - {ms}ms", "ok")
+    else:
+        flash("OFFLINE", "error")
+    return redirect(url_for("admin.devices"))
+
+@bp.get("/branding")
+@login_required
+@require_perm("branding.manage")
+def branding():
+    db = get_db()
+    s = {r["key"]: r["value"] for r in db.execute("SELECT key,value FROM settings").fetchall()}
+    return render_template("admin/branding.html", s=s)
+
+@bp.post("/branding/save")
+@login_required
+@require_perm("branding.manage")
+def branding_save():
+    db = get_db()
+    primary = (request.form.get("primary") or "").strip()
+    secondary = (request.form.get("secondary") or "").strip()
+    font = (request.form.get("font") or "").strip()
+    title_ar = (request.form.get("title_ar") or "").strip()
+    title_de = (request.form.get("title_de") or "").strip()
+
+    def set_setting(k,v):
+        db.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (k,v))
+
+    set_setting("brand.primary", primary)
+    set_setting("brand.secondary", secondary)
+    set_setting("brand.font", font)
+    set_setting("brand.title_ar", title_ar)
+    set_setting("brand.title_de", title_de)
+
+    os.makedirs(current_app.config["BRANDING_DIR"], exist_ok=True)
+    logo = request.files.get("logo")
+    bg = request.files.get("bg")
+    if logo and logo.filename:
+        lp = os.path.join(current_app.config["BRANDING_DIR"], "logo.png")
+        logo.save(lp)
+        set_setting("brand.logo", "branding/logo.png")
+    if bg and bg.filename:
+        bp_ = os.path.join(current_app.config["BRANDING_DIR"], "background.jpg")
+        bg.save(bp_)
+        set_setting("brand.bg", "branding/background.jpg")
+
+    db.commit()
+    audit("branding.save", {"primary": primary, "secondary": secondary})
+    flash("Saved", "ok")
+    return redirect(url_for("admin.branding"))
+
+@bp.get("/exports")
+@login_required
+@require_perm("exports.manage")
+def exports():
+    db = get_db()
+    profiles = db.execute("SELECT * FROM export_profiles ORDER BY name").fetchall()
+    return render_template("admin/exports.html", profiles=profiles)
+
+@bp.post("/exports/create")
+@login_required
+@require_perm("exports.manage")
+def exports_create():
+    db = get_db()
+    name = (request.form.get("name") or "").strip()
+    header_text = (request.form.get("header_text") or "").strip()
+    include_logo = 1 if request.form.get("include_logo") == "1" else 0
+    columns = request.form.getlist("columns")
+    break_rules = (request.form.get("break_rules_json") or "[]").strip()
+    try:
+        json.loads(break_rules)
+    except Exception:
+        flash("Invalid break rules JSON", "error")
+        return redirect(url_for("admin.exports"))
+    if not columns:
+        columns = ["employee_id","name","in_time","out_time","work_minutes"]
+    db.execute("INSERT INTO export_profiles(name,header_text,include_logo,columns_json,break_rules_json,created_ts) VALUES(?,?,?,?,?,?)",
+               (name, header_text, include_logo, json.dumps(columns), break_rules, datetime.datetime.now().isoformat(timespec="seconds")))
+    db.commit()
+    audit("exports.create", {"name": name})
+    flash("Saved", "ok")
+    return redirect(url_for("admin.exports"))
+
+@bp.post("/exports/<int:pid>/delete")
+@login_required
+@require_perm("exports.manage")
+def exports_delete(pid: int):
+    db = get_db()
+    old = db.execute("SELECT * FROM export_profiles WHERE id=?", (pid,)).fetchone()
+    db.execute("DELETE FROM export_profiles WHERE id=?", (pid,))
+    db.commit()
+    audit("exports.delete", {"id": pid, "old": dict(old) if old else None})
+    flash("Deleted", "ok")
+    return redirect(url_for("admin.exports"))
+
+@bp.get("/backups")
+@login_required
+@require_perm("backups.manage")
+def backups():
+    db = get_db()
+    rows = db.execute("SELECT * FROM backup_jobs ORDER BY created_ts DESC").fetchall()
+    return render_template("admin/backups.html", backups=rows)
+
+@bp.post("/backups/create")
+@login_required
+@require_perm("backups.manage")
+def backups_create():
+    db = get_db()
+    fname, size = create_backup(current_app.config["STORAGE_ROOT"], current_app.config["ALJOUD_DB_PATH"], current_app.config["BACKUPS_DIR"])
+    db.execute("INSERT INTO backup_jobs(created_ts,filename,size_bytes) VALUES(?,?,?)",
+               (datetime.datetime.now().isoformat(timespec="seconds"), fname, size))
+    db.commit()
+    rotate_backups(current_app.config["BACKUPS_DIR"], keep=8)
+    audit("backups.create", {"filename": fname, "size": size})
+    flash("Backup created", "ok")
+    return redirect(url_for("admin.backups"))
+
+@bp.get("/backups/download/<int:bid>")
+@login_required
+@require_perm("backups.manage")
+def backups_download(bid: int):
+    db = get_db()
+    row = db.execute("SELECT * FROM backup_jobs WHERE id=?", (bid,)).fetchone()
+    if not row:
+        flash("Not found", "error")
+        return redirect(url_for("admin.backups"))
+    path = os.path.join(current_app.config["BACKUPS_DIR"], row["filename"])
+    return send_file(path, as_attachment=True, download_name=row["filename"])
+
+@bp.get("/roles")
+@login_required
+@require_perm("roles.manage")
+def roles():
+    db = get_db()
+    roles = db.execute("SELECT * FROM roles ORDER BY name").fetchall()
+    perms = db.execute("SELECT * FROM permissions ORDER BY code").fetchall()
+    mapping = db.execute("SELECT role_id, perm_code FROM role_permissions").fetchall()
+    m = {}
+    for r in mapping:
+        m.setdefault(r["role_id"], set()).add(r["perm_code"])
+    employees = db.execute("SELECT id, employee_id, name, username FROM employees ORDER BY CAST(employee_id AS INTEGER)").fetchall()
+    er = db.execute("SELECT employee_id, role_id FROM employee_roles").fetchall()
+    er_map = {}
+    for r in er:
+        er_map.setdefault(r["employee_id"], set()).add(r["role_id"])
+    return render_template("admin/roles.html", roles=roles, perms=perms, role_perms=m, employees=employees, er_map=er_map)
+
+@bp.post("/roles/<int:rid>/save_perms")
+@login_required
+@require_perm("roles.manage")
+def roles_save_perms(rid: int):
+    db = get_db()
+    selected = set(request.form.getlist("perm_codes"))
+    db.execute("DELETE FROM role_permissions WHERE role_id=?", (rid,))
+    for code in selected:
+        db.execute("INSERT OR IGNORE INTO role_permissions(role_id,perm_code) VALUES(?,?)", (rid, code))
+    db.commit()
+    audit("roles.save_perms", {"role_id": rid, "count": len(selected)})
+    flash("Saved", "ok")
+    return redirect(url_for("admin.roles"))
+
+@bp.post("/roles/assign/<int:eid>")
+@login_required
+@require_perm("roles.manage")
+def roles_assign(eid: int):
+    db = get_db()
+    selected = set(int(x) for x in request.form.getlist("role_ids"))
+    db.execute("DELETE FROM employee_roles WHERE employee_id=?", (eid,))
+    for rid in selected:
+        db.execute("INSERT OR IGNORE INTO employee_roles(employee_id,role_id) VALUES(?,?)", (eid, rid))
+    db.commit()
+    audit("roles.assign", {"employee_id": eid, "roles": list(selected)})
+    flash("Saved", "ok")
+    return redirect(url_for("admin.roles"))

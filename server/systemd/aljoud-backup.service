@@ -1,0 +1,10 @@
+[Unit]
+Description=Aljoud Weekly Backup
+
+[Service]
+Type=oneshot
+User=admin
+Group=admin
+WorkingDirectory=/opt/aljoud/server
+EnvironmentFile=/opt/aljoud/server/.env
+ExecStart=/opt/aljoud/server/.venv/bin/python /opt/aljoud/server/scripts/backup_now.py

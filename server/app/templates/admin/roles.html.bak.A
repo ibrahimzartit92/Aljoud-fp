@@ -1,0 +1,213 @@
+{% extends "_base.html" %}
+{% block content %}
+<style>
+  .rtl { direction: rtl; text-align: right; }
+  .roles-wrap { display:flex; flex-direction:column; gap:16px; margin-top:12px; }
+  .role-card { padding:14px; border-radius:16px; border:1px solid rgba(255,255,255,.08); background:rgba(255,255,255,.03); }
+  .role-head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  .role-title { font-size:18px; font-weight:700; }
+  .muted { opacity:.75; }
+  .perm-grid { display:grid; grid-template-columns: 1fr; gap:8px; margin-top:12px; }
+  @media(min-width: 900px){ .perm-grid { grid-template-columns: 1fr 1fr; } }
+  .perm-item { display:flex; align-items:flex-start; gap:10px; padding:10px; border-radius:12px; border:1px solid rgba(255,255,255,.06); background:rgba(0,0,0,.18); }
+  .perm-item input{ margin-top:3px; }
+  .perm-meta { display:flex; flex-direction:column; gap:2px; }
+  .perm-name { font-weight:600; }
+  .perm-code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size:12px; opacity:.8; }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  .btn { padding:8px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.06); cursor:pointer; }
+  .btn.primary { background:rgba(180,138,44,.22); border-color: rgba(180,138,44,.35); }
+  .btn.danger { background:rgba(220,60,60,.18); border-color: rgba(220,60,60,.35); }
+  .table { width:100%; border-collapse:collapse; }
+  .table th, .table td { padding:10px; border-bottom:1px solid rgba(255,255,255,.08); vertical-align:top; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; }
+  .chip { padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.10); background:rgba(255,255,255,.04); font-size:12px; }
+  .two-col { display:grid; grid-template-columns: 1fr; gap:12px; }
+  @media(min-width: 1000px){ .two-col { grid-template-columns: 1fr 1fr; } }
+  .search { width:100%; padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.10); background:rgba(0,0,0,.18); color:inherit; }
+</style>
+
+<div class="card rtl">
+  <h1 class="h1">الأدوار والصلاحيات</h1>
+  <div class="muted">تحديد صلاحيات كل رول، وربط الأدوار بالموظفين، وإضافة صلاحيات فردية لموظف محدد.</div>
+
+  <div class="actions" style="margin-top:12px">
+    <form method="post" action="{{ url_for('admin.roles_bootstrap_defaults') }}">
+      <button class="btn primary" type="submit">تطبيق صلاحيات افتراضية (Cashier/Manager)</button>
+    </form>
+  </div>
+
+  <div class="roles-wrap">
+
+    <div class="role-card">
+      <div class="role-head">
+        <div class="role-title">1) صلاحيات الأدوار</div>
+        <div class="muted">تعديل ما يستطيع كل رول الوصول إليه</div>
+      </div>
+
+      {% for role in roles %}
+        <div class="role-card" style="margin-top:12px">
+          <div class="role-head">
+            <div class="role-title">Role: {{ role.name }}</div>
+            <div class="muted">اختر الصلاحيات ثم اضغط حفظ</div>
+          </div>
+
+          <form method="post" action="{{ url_for('admin.roles_save_perms', rid=role.id) }}">
+            <input class="search" type="text" placeholder="بحث داخل الصلاحيات..." oninput="filterPerms(this, 'role-{{ role.id }}')" style="margin-top:12px">
+
+            <div id="role-{{ role.id }}" class="perm-grid">
+              {% for p in perms %}
+                {% set checked = (role_perms.get(role.id) and (p.code in role_perms.get(role.id))) %}
+                <label class="perm-item">
+                  <input type="checkbox" name="perm_codes" value="{{ p.code }}" {% if checked %}checked{% endif %}>
+                  <span class="perm-meta">
+                    <span class="perm-name">{{ p.title }}</span>
+                    <span class="perm-code">{{ p.code }}</span>
+                    {% if p.desc %}
+                      <span class="muted">{{ p.desc }}</span>
+                    {% endif %}
+                  </span>
+                </label>
+              {% endfor %}
+            </div>
+
+            <div class="actions">
+              <button class="btn primary" type="submit">حفظ صلاحيات رول {{ role.name }}</button>
+            </div>
+          </form>
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="role-card">
+      <div class="role-head">
+        <div class="role-title">2) ربط الأدوار بالموظفين</div>
+        <div class="muted">لمجموعة موظفين عبر الرول</div>
+      </div>
+
+      <div style="overflow:auto; margin-top:10px">
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="min-width:120px">EmpID</th>
+              <th style="min-width:200px">الاسم</th>
+              <th style="min-width:180px">Username</th>
+              <th>الأدوار</th>
+              <th style="min-width:140px">حفظ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in employees %}
+              <tr>
+                <td>{{ e.employee_id }}</td>
+                <td>{{ e.name }}</td>
+                <td>{{ e.username }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('admin.roles_assign', eid=e.id) }}">
+                    <div class="chips">
+                      {% for r in roles %}
+                        {% set is_checked = (er_map.get(e.id) and (r.id in er_map.get(e.id))) %}
+                        <label class="chip">
+                          <input type="checkbox" name="role_ids" value="{{ r.id }}" {% if is_checked %}checked{% endif %}>
+                          {{ r.name }}
+                        </label>
+                      {% endfor %}
+                    </div>
+                </td>
+                <td>
+                    <button class="btn primary" type="submit">حفظ</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+            {% if employees|length == 0 %}
+              <tr><td colspan="5">لا يوجد موظفين.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="role-card">
+      <div class="role-head">
+        <div class="role-title">3) صلاحيات فردية لموظف (Overrides)</div>
+        <div class="muted">إضافة صلاحيات إضافية لموظف محدد بدون تغيير رولاته</div>
+      </div>
+
+      <form method="post" action="{{ url_for('admin.user_perms_save') }}" style="margin-top:12px">
+        <div class="two-col">
+          <div>
+            <div class="muted" style="margin-bottom:6px">اختر الموظف</div>
+            <select name="employee_row_id" class="search" required>
+              <option value="" disabled selected>-- اختر --</option>
+              {% for e in employees %}
+                <option value="{{ e.id }}">{{ e.employee_id }} - {{ e.name }} ({{ e.username }})</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <div class="muted" style="margin-bottom:6px">ملاحظة</div>
+            <div class="muted">هذه الصلاحيات تُضاف فوق صلاحيات الرول. لا يوجد "منع" في هذا الإصدار.</div>
+          </div>
+        </div>
+
+        <input class="search" type="text" placeholder="بحث داخل الصلاحيات..." oninput="filterPerms(this, 'user-perms')" style="margin-top:12px">
+
+        <div id="user-perms" class="perm-grid">
+          {% for p in perms %}
+            <label class="perm-item">
+              <input type="checkbox" name="perm_codes" value="{{ p.code }}">
+              <span class="perm-meta">
+                <span class="perm-name">{{ p.title }}</span>
+                <span class="perm-code">{{ p.code }}</span>
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <div class="actions">
+          <button class="btn primary" type="submit">حفظ الصلاحيات الفردية</button>
+          <button class="btn" type="button" onclick="clearChecks('user-perms')">تفريغ</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="role-card">
+      <div class="role-head">
+        <div class="role-title">4) حذف نهائي لموظف من قاعدة البيانات</div>
+        <div class="muted">بعد تعطيل الموظف والتأكد من المزامنة</div>
+      </div>
+
+      <form method="post" action="{{ url_for('admin.employee_hard_delete') }}" onsubmit="return confirm('تأكيد الحذف النهائي؟ هذا الإجراء لا يمكن التراجع عنه.');" style="margin-top:12px">
+        <div class="two-col">
+          <input class="search" name="query" placeholder="EmpID أو Username أو الاسم..." required>
+          <button class="btn danger" type="submit">حذف نهائي</button>
+        </div>
+        <div class="muted" style="margin-top:8px">
+          إذا وُجد أكثر من تطابق، سيطلب النظام تحديد موظف واحد (رسالة خطأ بعدد النتائج).
+        </div>
+      </form>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  function filterPerms(inp, containerId){
+    const q = (inp.value || "").trim().toLowerCase();
+    const root = document.getElementById(containerId);
+    if(!root) return;
+    const items = root.querySelectorAll(".perm-item");
+    items.forEach(it => {
+      const txt = (it.innerText || "").toLowerCase();
+      it.style.display = (!q || txt.includes(q)) ? "" : "none";
+    });
+  }
+  function clearChecks(containerId){
+    const root = document.getElementById(containerId);
+    if(!root) return;
+    root.querySelectorAll("input[type=checkbox]").forEach(cb => cb.checked = false);
+  }
+</script>
+{% endblock %}

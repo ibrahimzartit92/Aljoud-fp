@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="{{ 'ar' if get_locale()=='ar' else 'de' }}" dir="{{ 'rtl' if get_locale()=='ar' else 'ltr' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ setting('brand.title_ar','Aljoud Attendance') if get_locale()=='ar' else setting('brand.title_de','Aljoud Attendance') }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <style>
+    :root{
+      --brand-primary: {{ setting('brand.primary','#b88a2a') }};
+      --brand-secondary: {{ setting('brand.secondary','#111111') }};
+      --brand-font: {{ setting('brand.font','system-ui,-apple-system,Segoe UI,Roboto,Arial') }};
+    }
+    .bg{ background-image: url("/{{ setting('brand.bg','') }}"); }
+  </style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="overlay"></div>
+
+  <div class="topbar">
+    <div class="brand">
+      {% if setting('brand.logo','') %}
+        <img src="/{{ setting('brand.logo','') }}" alt="logo">
+      {% endif %}
+      <div class="title">
+        {{ setting('brand.title_ar','الجود') if get_locale()=='ar' else setting('brand.title_de','Aljoud') }}
+      </div>
+    </div>
+
+    <div class="nav">
+      {% if g.user %}
+        <a href="/attendance/pending">{{ t('pending') }}</a>
+        <a href="/attendance/list">{{ t('attendance') if t('attendance')!='attendance' else 'Attendance' }}</a>
+        <a href="/reports/hours">{{ t('reports') }}</a>
+        <a href="/admin/employees">{{ t('employees') }}</a>
+        <a href="/admin/branches">{{ t('branches') }}</a>
+        <a href="/admin/devices">{{ t('devices') }}</a>
+        <a href="/admin/exports">{{ t('exports') }}</a>
+        <a href="/admin/branding">{{ t('branding') }}</a>
+        <a href="/admin/backups">{{ t('backups') }}</a>
+        <a href="/admin/roles">{{ t('roles') }}</a>
+        <a href="/logout">{{ t('logout') }}</a>
+      {% endif %}
+      <a href="/lang/ar">AR</a>
+      <a href="/lang/de">DE</a>
+    </div>
+  </div>
+
+  <div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat,msg in messages %}
+          <div class="flash {{ cat }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </div>
+
+  <div class="footer">{{ t('developed_by') }}</div>
+</body>
+</html>

@@ -1,0 +1,61 @@
+{% extends "_base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h1 class="h1">{{ t('attendance') if t('attendance')!='attendance' else 'Attendance' }}</h1>
+    <div style="opacity:.8">Approved punches (editable time)</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>EmpID</th>
+        <th>Name</th>
+        <th>Branch</th>
+        <th>Device</th>
+        <th>Type</th>
+        <th>Approved by</th>
+        <th>Edited by</th>
+        <th style="width:320px">Edit</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td style="white-space:nowrap">{{ r.ts }}</td>
+        <td>{{ r.employee_id }}</td>
+        <td>{{ r.emp_name or '' }}</td>
+        <td>{{ r.branch_name or '' }}</td>
+        <td>{{ r.device_name or '' }}</td>
+        <td><span class="badge">{{ r.punch_type }}</span></td>
+
+        <td style="white-space:nowrap">
+          {{ r.approved_by or '' }}
+          {% if r.approved_ts %}<div style="opacity:.7;font-size:.9em">{{ r.approved_ts }}</div>{% endif %}
+        </td>
+
+        <td style="white-space:nowrap">
+          {{ r.edited_by or '' }}
+          {% if r.edited_ts %}<div style="opacity:.7;font-size:.9em">{{ r.edited_ts }}</div>{% endif %}
+        </td>
+
+        <td>
+          <form method="post" action="/attendance/list/{{ r.id }}/edit" class="row" style="gap:8px; flex-wrap:wrap;">
+            <input name="ts" value="{{ r.ts }}" placeholder="YYYY-MM-DDTHH:MM:SS" style="min-width:220px">
+            <input name="note" value="{{ r.edit_note or '' }}" placeholder="Note (optional)" style="min-width:160px">
+            <button type="submit">Save</button>
+          </form>
+          {% if r.original_ts and r.original_ts != r.ts %}
+            <div style="opacity:.7;font-size:.9em;margin-top:4px">Original: {{ r.original_ts }}</div>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      {% if rows|length==0 %}
+        <tr><td colspan="9">No attendance</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

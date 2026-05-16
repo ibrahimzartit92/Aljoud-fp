@@ -1,0 +1,140 @@
+{% extends "_base.html" %}
+{% block content %}
+<style>
+  .roles-wrap{display:grid;gap:14px;margin-top:12px}
+  .card-soft{padding:14px;border-radius:16px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}
+  .role-title{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .role-title h2{margin:0}
+  .perm-group{margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)}
+  .perm-grid{display:grid;grid-template-columns: 1fr 1fr;gap:6px 12px;margin-top:8px}
+  @media (max-width: 900px){.perm-grid{grid-template-columns:1fr}}
+  .perm-item{display:flex;align-items:flex-start;gap:8px;white-space:normal;line-height:1.25}
+  .perm-code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:.9em;opacity:.85}
+  .muted{opacity:.75}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  select, input[type="text"]{min-width:220px}
+  .bulk-grid{display:grid;grid-template-columns: 1fr 1fr;gap:12px}
+  @media (max-width: 900px){.bulk-grid{grid-template-columns:1fr}}
+</style>
+
+<div class="card">
+  <h1 class="h1">{{ t('roles') if t is defined else 'Roles & Permissions' }}</h1>
+  <div class="muted" style="margin-top:6px">
+    هنا بتحدد شو كل رول يقدر يشوف/يعمل بالواجهة. بعدها بتربط الرولز بالموظفين.
+    
+    <div style="margin-top:6px">
+      المطلوب حالياً:
+      <ul style="margin-top:6px">
+        <li><b>cashier</b>: فقط صفحات <span class="perm-code">/attendance/pending</span> و <span class="perm-code">/attendance/list</span></li>
+        <li><b>manager</b>: صفحات الكاشير + <span class="perm-code">/reports/hours</span> + <span class="perm-code">/admin/employees</span> + <span class="perm-code">/admin/exports</span></li>
+        <li><b>superadmin</b>: كل الصفحات</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="roles-wrap">
+
+    <!-- Bulk assignment -->
+    <div class="card-soft">
+      <h2 class="h2" style="margin:0">ربط رولز لمجموعة موظفين</h2>
+      <div class="muted" style="margin-top:6px">اختَر موظفين، اختَر الرولز، وحدّد إذا بدك تستبدل كل أدوارهم أو تضيف فوق الموجود.</div>
+
+      <form method="post" action="{{ url_for('admin.roles_assign_bulk') }}" style="margin-top:12px">
+        <div class="bulk-grid">
+          <div>
+            <div style="margin-bottom:6px;opacity:.85">الموظفين</div>
+            <select name="employee_ids" multiple size="10" style="width:100%">
+              {% for e in employees %}
+                <option value="{{ e.id }}">{{ e.employee_id }} - {{ e.name }} ({{ e.username }})</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div>
+            <div style="margin-bottom:6px;opacity:.85">الرولز</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px">
+              {% for r in roles %}
+                <label class="perm-item">
+                  <input type="checkbox" name="role_ids" value="{{ r.id }}">
+                  <span>{{ r.name }}</span>
+                </label>
+              {% endfor %}
+            </div>
+
+            <div class="actions">
+              <label class="perm-item"><input type="radio" name="mode" value="replace" checked> <span>استبدال كل الأدوار</span></label>
+              <label class="perm-item"><input type="radio" name="mode" value="add"> <span>إضافة فوق الموجود</span></label>
+              <button type="submit">حفظ</button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+
+
+    <!-- Per-role permissions -->
+    {% for role in roles %}
+      <div class="card-soft">
+        <div class="role-title">
+          <h2 class="h2">Role: {{ role.name }}</h2>
+          <div class="muted">تعديل صلاحيات الرول</div>
+        </div>
+
+        <form method="post" action="{{ url_for('admin.roles_save_perms', rid=role.id) }}">
+          {% for gname, gperms in perm_groups %}
+            <div class="perm-group">
+              <div style="font-weight:600">{{ gname }}</div>
+              <div class="perm-grid">
+                {% for p in gperms %}
+                  {% set code = p.code if p.code is defined else p['code'] %}
+                  <label class="perm-item">
+                    <input type="checkbox" name="perm_codes" value="{{ code }}"
+                      {% if role_perms.get(role.id) and (code in role_perms.get(role.id)) %}checked{% endif %}>
+                    <span>
+                      <span>{{ perm_titles.get(code, code) }}</span>
+                      <div class="perm-code">{{ code }}</div>
+                    </span>
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+
+          <div class="actions">
+            <button type="submit">Save permissions</button>
+          </div>
+        </form>
+
+        <!-- Quick per-employee assignment inside the role card -->
+        <div class="perm-group">
+          <div style="font-weight:600">ربط هذا الرول بموظف واحد (سريع)</div>
+          <div class="muted" style="margin-top:6px">للتعديل التفصيلي على الموظف، استعمل صفحة Employees أو نموذج الربط بالجملة فوق.</div>
+
+          <form method="post" action="{{ url_for('admin.roles_assign', eid=0) }}" onsubmit="return false" style="display:none"></form>
+
+          <form method="post" action="{{ url_for('admin.roles_assign', eid=employees[0].id if employees|length else 0) }}" style="margin-top:10px">
+            <div class="actions">
+              <select name="_employee_select" onchange="this.form.action='{{ url_for('admin.roles_assign', eid=0) }}'.replace('/0', '/' + this.value)">
+                {% if employees|length == 0 %}
+                  <option value="0">No employees</option>
+                {% else %}
+                  {% for e in employees %}
+                    <option value="{{ e.id }}">{{ e.employee_id }} - {{ e.name }} ({{ e.username }})</option>
+                  {% endfor %}
+                {% endif %}
+              </select>
+
+              <!-- preserve existing roles for selected employee? roles_assign replaces roles by submitted list -->
+              <input type="hidden" name="role_ids" value="{{ role.id }}">
+              <button type="submit">Set this role (replace)</button>
+            </div>
+            <div class="muted" style="margin-top:6px">ملاحظة: هذا الزر يستبدل كل أدوار الموظف بهذا الرول فقط.</div>
+          </form>
+        </div>
+
+      </div>
+    {% endfor %}
+
+  </div>
+</div>
+{% endblock %}

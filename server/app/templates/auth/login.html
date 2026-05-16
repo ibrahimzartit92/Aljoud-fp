@@ -1,0 +1,15 @@
+{% extends "_base.html" %}
+{% block content %}
+<div class="card" style="max-width:520px;margin:40px auto;">
+  <h1 class="h1">{{ t('login') }}</h1>
+  <form method="post" action="/login">
+    <div class="row">
+      <input name="username" placeholder="{{ t('username') }}" autocomplete="username" required style="flex:1;min-width:180px;">
+      <input name="password" placeholder="{{ t('password') }}" autocomplete="current-password" required type="password" style="flex:1;min-width:180px;">
+    </div>
+    <div class="row" style="margin-top:12px;justify-content:flex-end;">
+      <button type="submit">{{ t('login') }}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

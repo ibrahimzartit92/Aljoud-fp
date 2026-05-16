@@ -1,0 +1,32 @@
+{% extends "_base.html" %}
+{% block content %}
+<div class="card">
+  <h1 class="h1">{{ t('branches') }}</h1>
+  <div class="card" style="margin-top:12px">
+    <form method="post" action="{{ url_for('admin.branches_create') }}">
+      <div class="row">
+        <input name="name" placeholder="Branch name" required>
+        <button type="submit">{{ t('add') }}</button>
+      </div>
+    </form>
+  </div>
+  <div class="card" style="margin-top:12px">
+    <table>
+      <thead><tr><th>Name</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for b in branches %}
+          <tr>
+            <td>{{ b.name }}</td>
+            <td class="row">
+              <form method="post" action="{{ url_for('admin.branches_delete', branch_id=b.id) }}">
+                <button class="secondary" type="submit">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        {% if branches|length==0 %}<tr><td colspan="2">No branches</td></tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

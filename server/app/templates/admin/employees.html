@@ -1,0 +1,179 @@
+{% extends "_base.html" %}
+{% block content %}
+<style>
+  .emp-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap}
+  .emp-form-grid{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .emp-form-grid > *{min-width:140px}
+  .emp-form-grid .w-sm{min-width:110px;width:110px}
+  .emp-form-grid .w-md{min-width:160px}
+  .emp-form-grid .w-lg{min-width:220px}
+  .emp-table td{vertical-align:middle}
+  .emp-table input{width:100%;min-width:110px}
+  .emp-table .cell-sm{width:90px;min-width:90px}
+  .emp-table .cell-md{width:140px;min-width:140px}
+  .emp-table .cell-lg{width:220px;min-width:220px}
+  .emp-table .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-start}
+  .emp-note{opacity:.75;margin-top:10px;line-height:1.6}
+
+  /* Roles as checkboxes */
+  .roles-box{
+    max-width:320px;
+    min-width:240px;
+    max-height:120px;
+    overflow:auto;
+    padding:8px 10px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.03);
+  }
+  .roles-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap:6px 10px;
+  }
+  .role-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    white-space:nowrap;
+  }
+  .role-item input{width:auto;min-width:auto}
+  .roles-inline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+
+  /* Sync button feedback */
+  .sync-hint{opacity:.8;font-size:.95em}
+</style>
+
+<div class="card">
+  <h1 class="h1">{{ t('employees') }}</h1>
+
+  <div class="emp-toolbar">
+    <div style="opacity:.85">إدارة الموظفين + الأدوار + مزامنة مع أجهزة الـ Agent</div>
+
+    {# IMPORTANT:
+       We explicitly send agent_sync_path + agent_port so the backend can call:
+       http://<agent_ip>:8002/sync/employees
+    #}
+    <form method="post" action="{{ url_for('admin.employees_sync') }}" id="syncEmployeesForm">
+      <input type="hidden" name="agent_sync_path" value="/sync/employees">
+      <input type="hidden" name="agent_port" value="8002">
+      <button type="submit">Sync with devices</button>
+    </form>
+  </div>
+
+  <div class="sync-hint" style="margin-top:8px">
+    ملاحظة: المزامنة تستهدف Agent endpoint: <code>POST :8002/sync/employees</code>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2 class="h2">Add employee</h2>
+
+    <form method="post" action="{{ url_for('admin.employees_create') }}">
+      <div class="emp-form-grid">
+        <input class="w-sm" name="employee_id" placeholder="Employee ID" required>
+        <input class="w-lg" name="name" placeholder="Full name" required>
+        <input class="w-md" name="username" placeholder="Username" required>
+        <input class="w-md" name="card_rfid" placeholder="RFID">
+        <input class="w-md" name="password" placeholder="Password (6 digits)">
+        <input class="w-md" name="s30_password" placeholder="S30 PW (6 digits)">
+
+        <div class="roles-inline">
+          <div style="opacity:.85;min-width:60px">Roles</div>
+          <div class="roles-box">
+            <div class="roles-grid">
+              {% for r in roles %}
+                <label class="role-item">
+                  <input type="checkbox" name="role_ids" value="{{ r.id }}">
+                  <span>{{ r.name }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <button type="submit">{{ t('add') }}</button>
+      </div>
+
+      <div class="emp-note">
+        ملاحظة: كلمة المرور الافتراضية إذا تركتها فاضية ستكون 000000 (حسب السيرفر).
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="margin-top:12px; overflow:auto">
+    <h2 class="h2">Employees</h2>
+
+    <table class="emp-table">
+      <thead>
+        <tr>
+          <th class="cell-sm">EmpID</th>
+          <th class="cell-lg">Name</th>
+          <th class="cell-md">User</th>
+          <th class="cell-md">RFID</th>
+          <th class="cell-sm">S30 PW</th>
+          <th class="cell-sm">Active</th>
+          <th class="cell-lg">Roles</th>
+          <th class="cell-lg">Actions</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for e in employees %}
+        <tr>
+          <td>
+            <form method="post" action="{{ url_for('admin.employees_update', emp_row_id=e.id) }}">
+              <input class="cell-sm" name="employee_id" value="{{ e.employee_id }}">
+          </td>
+
+          <td><input class="cell-lg" name="name" value="{{ e.name }}"></td>
+          <td><input class="cell-md" name="username" value="{{ e.username }}"></td>
+          <td><input class="cell-md" name="card_rfid" value="{{ e.card_rfid or '' }}"></td>
+          <td><input class="cell-sm" name="s30_password" value="{{ e.s30_password or '' }}" placeholder="6 digits"></td>
+
+          <td>
+            <select name="is_active" class="cell-sm">
+              <option value="1" {% if e.is_active %}selected{% endif %}>Yes</option>
+              <option value="0" {% if not e.is_active %}selected{% endif %}>No</option>
+            </select>
+          </td>
+
+          <td>
+            <div class="roles-box">
+              <div class="roles-grid">
+                {% for r in roles %}
+                  <label class="role-item">
+                    <input type="checkbox" name="role_ids" value="{{ r.id }}"
+                      {% if e.roles and (r.name in e.roles) %}checked{% endif %}>
+                    <span>{{ r.name }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+          </td>
+
+          <td class="actions">
+              <input name="password" placeholder="new 6-digit pw" style="width:160px;min-width:160px">
+              <button type="submit">Save</button>
+            </form>
+
+            <form method="post" action="{{ url_for('admin.employees_delete', emp_row_id=e.id) }}"
+                  onsubmit="return confirm('Delete employee {{ e.username }} ?');">
+              <button class="secondary" type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% if employees|length == 0 %}
+          <tr><td colspan="8">No employees</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+
+    <div class="emp-note">
+      - زر Sync يستخدم endpoint: <code>POST /admin/employees/sync</code> ويرسل البيانات إلى الـ Agents.<br>
+      - تم تمرير <code>agent_sync_path=/sync/employees</code> و <code>agent_port=8002</code> مع الطلب للـ backend.
+    </div>
+  </div>
+</div>
+{% endblock %}

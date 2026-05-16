@@ -1,0 +1,46 @@
+{% extends "_base.html" %}
+{% block content %}
+<div class="card">
+  <div class="row" style="justify-content:space-between; align-items:center;">
+    <h1 class="h1">{{ t('pending') }}</h1>
+    <div style="opacity:.8">Pending punches require cashier approval</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>EmpID</th>
+        <th>Name</th>
+        <th>Branch</th>
+        <th>Device</th>
+        <th>Type</th>
+        <th style="width:220px">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td style="white-space:nowrap">{{ r.ts }}</td>
+        <td>{{ r.employee_id }}</td>
+        <td>{{ r.emp_name or '' }}</td>
+        <td>{{ r.branch_name or '' }}</td>
+        <td>{{ r.device_name or '' }}</td>
+        <td><span class="badge">{{ r.punch_type }}</span></td>
+        <td class="row" style="gap:8px">
+          <form method="post" action="/attendance/pending/{{ r.id }}/approve">
+            <button type="submit">{{ t('approve') }}</button>
+          </form>
+          <form method="post" action="/attendance/pending/{{ r.id }}/reject">
+            <button class="secondary" type="submit">{{ t('reject') }}</button>
+          </form>
+        </td>
+      </tr>
+    {% endfor %}
+    {% if rows|length == 0 %}
+      <tr><td colspan="7">No pending punches</td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

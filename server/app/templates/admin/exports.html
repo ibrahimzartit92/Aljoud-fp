@@ -1,0 +1,121 @@
+{% extends "_base.html" %}
+{% block content %}
+<div class="card">
+  <h1 class="h1">Exporte</h1>
+
+  <div class="card" style="margin-top:12px">
+    <div style="opacity:.85">
+      Hier kannst du die automatischen Exporte konfigurieren und bei Bedarf sofort starten.
+      Sprache/Spalten sind auf Deutsch. Excel/PDF werden im Verzeichnis <code>/mnt/nvme/exports</code> gespeichert.
+    </div>
+  </div>
+
+  {% set modes = [
+    ("daily", "Täglich (pro Filiale, pro Tag)"),
+    ("weekly", "Wöchentlich (KW, pro Filiale + pro Mitarbeiter)"),
+    ("monthly", "Monatlich (pro Monat, pro Filiale + pro Mitarbeiter)")
+  ] %}
+
+  {% for mode_key, mode_title in modes %}
+  {% set s = settings.get(mode_key) %}
+  <div class="card" style="margin-top:12px">
+    <h2 class="h2">{{ mode_title }}</h2>
+
+    <div class="row" style="gap:16px; align-items:flex-end; flex-wrap:wrap;">
+      <form method="post" action="{{ url_for('admin.exports_settings_save') }}" class="row" style="gap:12px; align-items:flex-end; flex-wrap:wrap;">
+        <input type="hidden" name="mode" value="{{ mode_key }}">
+
+        <div style="min-width:260px">
+          <label style="display:block;opacity:.8;margin-bottom:6px">Profil</label>
+          <select name="profile_id" required>
+            {% for p in profiles %}
+              <option value="{{ p.id }}" {% if s and s.profile_id == p.id %}selected{% endif %}>
+                {{ p.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div style="min-width:220px">
+          <label style="display:block;opacity:.8;margin-bottom:6px">Export-Formate</label>
+          <div class="row" style="gap:10px; align-items:center;">
+            {% set fmts = (s.export_formats if s else "excel,pdf") %}
+            <label class="row" style="gap:6px; align-items:center;">
+              <input type="checkbox" name="fmt_excel" value="1" {% if 'excel' in fmts %}checked{% endif %}>
+              Excel
+            </label>
+            <label class="row" style="gap:6px; align-items:center;">
+              <input type="checkbox" name="fmt_pdf" value="1" {% if 'pdf' in fmts %}checked{% endif %}>
+              PDF
+            </label>
+          </div>
+          <div style="opacity:.7;font-size:12px;margin-top:4px">
+            Hinweis: Excel sollte aktiviert bleiben.
+          </div>
+        </div>
+
+        <div style="min-width:220px">
+          <label style="display:block;opacity:.8;margin-bottom:6px">Pausenregel</label>
+          {% set bp = (s.break_policy if s else "manual") %}
+          <select name="break_policy" class="break_policy" data-mode="{{ mode_key }}">
+            <option value="none" {% if bp=='none' %}selected{% endif %}>Keine Pause abziehen</option>
+            <option value="manual" {% if bp=='manual' %}selected{% endif %}>Manuell (Minuten)</option>
+            <option value="auto" {% if bp=='auto' %}selected{% endif %}>Auto (6h=30m, 9h=60m)</option>
+          </select>
+        </div>
+
+        <div style="min-width:180px" class="break_minutes_wrap" data-mode="{{ mode_key }}">
+          <label style="display:block;opacity:.8;margin-bottom:6px">Pausen-Minuten</label>
+          <input type="number" name="break_minutes" min="0" max="600" value="{{ s.break_minutes if s else 30 }}">
+        </div>
+
+        <div>
+          <button type="submit">Speichern</button>
+        </div>
+      </form>
+
+      <form method="post" action="{{ url_for('admin.exports_run') }}" class="row" style="gap:12px; align-items:flex-end; flex-wrap:wrap; margin-left:auto;">
+        <input type="hidden" name="mode" value="{{ mode_key }}">
+
+        <div style="min-width:180px">
+          <label style="display:block;opacity:.8;margin-bottom:6px">Von (optional)</label>
+          <input type="date" name="date_from" value="">
+        </div>
+
+        <div style="min-width:180px">
+          <label style="display:block;opacity:.8;margin-bottom:6px">Bis (optional)</label>
+          <input type="date" name="date_to" value="">
+        </div>
+
+        <div>
+          <button class="secondary" type="submit">Jetzt exportieren</button>
+        </div>
+      </form>
+    </div>
+
+    <div style="opacity:.75;margin-top:10px;font-size:12px">
+      Standard: Ohne Datum nutzt das System automatisch den Vortag / die Vorwoche / den Vormonat.
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+(function(){
+  function toggleAll(){
+    document.querySelectorAll('.break_policy').forEach(function(sel){
+      const mode = sel.getAttribute('data-mode');
+      const wrap = document.querySelector('.break_minutes_wrap[data-mode="'+mode+'"]');
+      if(!wrap) return;
+      wrap.style.display = (sel.value === 'manual') ? 'block' : 'none';
+    });
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('.break_policy').forEach(function(sel){
+      sel.addEventListener('change', toggleAll);
+    });
+    toggleAll();
+  });
+})();
+</script>
+{% endblock %}

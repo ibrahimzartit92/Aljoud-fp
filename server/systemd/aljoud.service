@@ -1,0 +1,15 @@
+[Unit]
+Description=Aljoud Attendance Server
+After=network.target
+
+[Service]
+User=admin
+Group=admin
+WorkingDirectory=/opt/aljoud/server
+EnvironmentFile=/opt/aljoud/server/.env
+ExecStart=/opt/aljoud/server/.venv/bin/gunicorn --workers 2 --bind 0.0.0.0:8001 wsgi:app
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

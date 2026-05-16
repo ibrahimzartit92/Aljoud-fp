@@ -1,0 +1,158 @@
+{% extends "_base.html" %}
+{% block content %}
+<style>
+  .grid2{display:grid;grid-template-columns: 1fr 1fr;gap:14px}
+  .card.pad{padding:14px}
+  .perm-box{max-height:240px;overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;background:rgba(255,255,255,.02)}
+  .perm-item{display:flex;align-items:center;gap:10px;padding:6px 4px}
+  .perm-item input{width:auto;min-width:auto}
+  .muted{opacity:.75}
+  .emp-grid{display:grid;grid-template-columns: 1fr 1fr;gap:12px}
+  .emp-list{max-height:260px;overflow:auto;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:8px}
+  .emp-row{display:flex;align-items:center;gap:10px;padding:6px 4px}
+  .emp-row input{width:auto;min-width:auto}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  code.small{font-size:.9em}
+</style>
+
+<div class="card">
+  <h1 class="h1">{{ t('roles_permissions') if t is defined else 'Roles & Permissions' }}</h1>
+  <div class="muted" style="margin-top:6px">
+    Default policy:
+    <b>cashier</b> → Attendance pages only,
+    <b>manager</b> → Attendance + Reports + Employees + Exports,
+    <b>superadmin</b> → all pages.
+  </div>
+</div>
+
+<div class="grid2" style="margin-top:12px">
+
+  <!-- Role permissions -->
+  <div class="card pad">
+    <h2 class="h2">Role permissions</h2>
+
+    {% for role in roles %}
+      <div class="card" style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+          <div><b>Role:</b> {{ role.name }}</div>
+          <div class="muted"><code class="small">/admin/roles</code></div>
+        </div>
+
+        <form method="post" action="{{ url_for('admin.roles_save_perms', rid=role.id) }}" style="margin-top:10px">
+          {% for g in perm_groups %}
+            <div style="margin-top:10px">
+              <div class="muted" style="font-weight:600;margin-bottom:6px">{{ g.title }}</div>
+              <div class="perm-box">
+                {% for p in g.perms %}
+                  {% set code = p.code if p.code is defined else p['code'] %}
+                  <label class="perm-item">
+                    <input type="checkbox" name="perm_codes" value="{{ code }}"
+                      {% if role_perms.get(role.id) and (code in role_perms.get(role.id)) %}checked{% endif %}>
+                    <span>{{ perm_titles.get(code, code) }}</span>
+                    <span class="muted" style="margin-inline-start:auto"><code class="small">{{ code }}</code></span>
+                  </label>
+                {% endfor %}
+                {% if g.perms|length == 0 %}
+                  <div class="muted">No permissions in this group</div>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+
+          <div class="actions">
+            <button type="submit">Save role permissions</button>
+          </div>
+        </form>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Employee role assignment + overrides + purge -->
+  <div class="card pad">
+    <h2 class="h2">Employees</h2>
+    <div class="muted">Assign roles (bulk) and optionally set direct permissions per employee.</div>
+
+    <div class="emp-grid" style="margin-top:12px">
+      <div>
+        <div class="muted" style="font-weight:600;margin-bottom:6px">Select employees</div>
+        <div class="emp-list">
+          {% for e in employees %}
+            <label class="emp-row">
+              <input type="checkbox" name="employee_ids" form="bulkRolesForm" value="{{ e.id }}">
+              <input type="checkbox" name="employee_ids" form="empPermsForm" value="{{ e.id }}">
+              <span><b>{{ e.employee_id }}</b> — {{ e.username }} — {{ e.name }}</span>
+              {% if e.is_superadmin %}
+                <span class="muted" style="margin-inline-start:auto">Super Admin</span>
+              {% endif %}
+              {% if not e.is_active %}
+                <span class="muted" style="margin-inline-start:auto">Inactive</span>
+              {% endif %}
+            </label>
+          {% endfor %}
+          {% if employees|length == 0 %}
+            <div class="muted">No employees</div>
+          {% endif %}
+        </div>
+        <div class="muted" style="margin-top:6px">
+          Note: first checkbox list is for <b>Bulk Roles</b>, second is for <b>Direct Perms</b>.
+        </div>
+      </div>
+
+      <div>
+        <!-- Bulk roles -->
+        <form id="bulkRolesForm" method="post" action="{{ url_for('admin.roles_assign_bulk') }}">
+          <div class="muted" style="font-weight:600;margin-bottom:6px">Bulk assign roles</div>
+          <div class="perm-box" style="max-height:120px">
+            {% for r in roles %}
+              <label class="perm-item">
+                <input type="checkbox" name="role_ids" value="{{ r.id }}">
+                <span>{{ r.name }}</span>
+              </label>
+            {% endfor %}
+          </div>
+          <div class="actions">
+            <button type="submit">Save bulk roles</button>
+          </div>
+        </form>
+
+        <!-- Direct perms -->
+        <form id="empPermsForm" method="post" action="{{ url_for('admin.roles_employee_perms_set') }}" style="margin-top:14px">
+          <div class="muted" style="font-weight:600;margin-bottom:6px">Direct permissions (override/additional)</div>
+          <div class="muted" style="margin-bottom:6px">
+            This requires RBAC to read <code class="small">employee_permissions</code>. If you didn’t patch RBAC yet, you can leave this unused.
+          </div>
+          <div class="perm-box">
+            {% for p in perms %}
+              {% set code = p.code if p.code is defined else p['code'] %}
+              <label class="perm-item">
+                <input type="checkbox" name="perm_codes" value="{{ code }}">
+                <span>{{ perm_titles.get(code, code) }}</span>
+                <span class="muted" style="margin-inline-start:auto"><code class="small">{{ code }}</code></span>
+              </label>
+            {% endfor %}
+          </div>
+          <div class="actions">
+            <button type="submit">Save direct permissions</button>
+          </div>
+        </form>
+
+        <!-- Purge -->
+        <form method="post" action="{{ url_for('admin.employee_purge') }}" style="margin-top:14px">
+          <div class="muted" style="font-weight:600;margin-bottom:6px">Purge employee from database (hard delete)</div>
+          <div class="muted" style="margin-bottom:6px">
+            Requirement: employee must be <b>inactive</b> first (deactivated from Employees page). Super Admin cannot be purged.
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <input name="purge_token" placeholder="Row ID or Employee ID or Username" style="min-width:260px">
+            <button class="secondary" type="submit" onclick="return confirm('Permanently delete this employee from DB?');">
+              Purge
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

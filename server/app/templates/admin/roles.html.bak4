@@ -1,0 +1,172 @@
+{% extends "_base.html" %}
+{% block content %}
+<style>
+  .rbac-wrap{max-width:1200px;margin:0 auto}
+  .rbac-grid{display:grid;grid-template-columns: 1fr;gap:14px}
+  @media(min-width:1100px){
+    .rbac-grid{grid-template-columns: 1.2fr .8fr}
+  }
+  .card{margin-top:12px}
+  .perm-group{margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}
+  .perm-group:first-child{border-top:none;padding-top:0}
+  .perm-title{font-weight:700;opacity:.95}
+  .perm-items{display:grid;grid-template-columns: 1fr;gap:6px;margin-top:8px}
+  @media(min-width:900px){
+    .perm-items{grid-template-columns: 1fr 1fr}
+  }
+  .perm-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid rgba(255,255,255,.06);border-radius:12px;background:rgba(255,255,255,.02)}
+  .perm-item input{width:auto;min-width:auto}
+  .perm-label{display:flex;flex-direction:column;gap:2px}
+  .perm-name{font-weight:600}
+  .perm-code{opacity:.65;font-size:.85em;direction:ltr;unicode-bidi:plaintext}
+
+  .emp-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 0;border-top:1px solid rgba(255,255,255,.08)}
+  .emp-row:first-child{border-top:none}
+  .emp-id{min-width:110px;opacity:.9}
+  .emp-name{min-width:220px;opacity:.95}
+  .emp-roles,.emp-perms{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .pill{padding:6px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02)}
+  .pill input{width:auto;min-width:auto;margin-inline-end:6px}
+  .actions{display:flex;gap:10px;flex-wrap:wrap}
+  .muted{opacity:.75}
+  .danger{border-color: rgba(255,80,80,.35) !important}
+</style>
+
+<div class="rbac-wrap">
+  <h1 class="h1">الأدوار والصلاحيات</h1>
+  <div class="muted">حدد صلاحيات كل Role، وبإمكانك كذلك منح صلاحيات إضافية لموظف محدد (Overrides) أو لمجموعة موظفين.</div>
+
+  <div class="rbac-grid">
+    <!-- LEFT: Role permissions -->
+    <div class="card">
+      <h2 class="h2">صلاحيات الرول (Role Permissions)</h2>
+      <div class="muted">الكاشير والمانجر حسب طلبك، والسوبر ادمن لديه وصول كامل تلقائياً (is_superadmin).</div>
+
+      {% for role in roles %}
+        <div class="card" style="margin-top:12px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+            <div>
+              <div class="h2" style="margin:0">Role: {{ role.name }}</div>
+              {% if role.name == 'cashier' %}<div class="muted">يشاهد: /attendance/pending و /attendance/list</div>{% endif %}
+              {% if role.name == 'manager' %}<div class="muted">يشاهد صفحات الكاشير + /reports/hours + /admin/employees + /admin/exports</div>{% endif %}
+              {% if role.name == 'superadmin' %}<div class="muted">سوبر ادمن: كل الصفحات</div>{% endif %}
+            </div>
+            <form method="post" action="{{ url_for('admin.roles_save_perms', rid=role.id) }}">
+              <input type="hidden" name="_role" value="{{ role.name }}">
+
+              {% for g in perm_groups %}
+                <div class="perm-group">
+                  <div class="perm-title">{{ g.title }}</div>
+                  <div class="perm-items">
+                    {% for code in g.perms %}
+                      <label class="perm-item">
+                        <input type="checkbox" name="perm_codes" value="{{ code }}" {% if code in role_perms.get(role.id, set()) %}checked{% endif %}>
+                        <div class="perm-label">
+                          <div class="perm-name">{{ perm_titles.get(code, code) }}</div>
+                          <div class="perm-code">{{ code }}</div>
+                        </div>
+                      </label>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endfor %}
+
+              <div class="actions" style="margin-top:12px">
+                <button type="submit">Save Role Permissions</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+
+    <!-- RIGHT: Employee assignments + overrides + purge -->
+    <div>
+      <div class="card">
+        <h2 class="h2">ربط الموظفين بالأدوار</h2>
+        <div class="muted">هذه الصفحة تتحكم بالدخول إلى صفحات النظام عبر الصلاحيات (Permissions).</div>
+
+        {% for e in employees %}
+          <div class="emp-row">
+            <div class="emp-id">#{{ e.employee_id }}</div>
+            <div class="emp-name">{{ e.name }} <span class="muted">({{ e.username }})</span></div>
+
+            <form method="post" action="{{ url_for('admin.roles_assign', eid=e.id) }}" class="emp-roles">
+              {% for r in roles %}
+                <label class="pill">
+                  <input type="checkbox" name="role_ids" value="{{ r.id }}" {% if r.id in er_map.get(e.id, set()) %}checked{% endif %}>
+                  {{ r.name }}
+                </label>
+              {% endfor %}
+              <button type="submit">Save Roles</button>
+            </form>
+
+            <form method="post" action="{{ url_for('admin.employee_perms_set', eid=e.id) }}" class="emp-perms">
+              {% for code in quick_perms %}
+                <label class="pill">
+                  <input type="checkbox" name="perm_codes" value="{{ code }}" {% if code in emp_perms.get(e.id, set()) %}checked{% endif %}>
+                  {{ perm_titles.get(code, code) }}
+                </label>
+              {% endfor %}
+              <button type="submit">Save Overrides</button>
+            </form>
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="card">
+        <h2 class="h2">تعيين لمجموعة موظفين (Bulk)</h2>
+        <form method="post" action="{{ url_for('admin.roles_assign_bulk') }}">
+          <div class="muted" style="margin-bottom:8px">اختر عدة موظفين ثم حدد الأدوار والصلاحيات.</div>
+
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div>
+              <div class="muted" style="margin-bottom:6px">Employees</div>
+              <select name="employee_ids" multiple size="8" style="width:100%;padding:10px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)">
+                {% for e in employees %}
+                  <option value="{{ e.id }}">#{{ e.employee_id }} - {{ e.name }} ({{ e.username }})</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div>
+              <div class="muted" style="margin-bottom:6px">Mode</div>
+              <label class="pill"><input type="radio" name="mode" value="replace" checked>Replace Roles/Overrides</label>
+              <label class="pill"><input type="radio" name="mode" value="add">Add (keep existing)</label>
+            </div>
+
+            <div>
+              <div class="muted" style="margin-bottom:6px">Roles</div>
+              {% for r in roles %}
+                <label class="pill"><input type="checkbox" name="role_ids" value="{{ r.id }}">{{ r.name }}</label>
+              {% endfor %}
+            </div>
+
+            <div>
+              <div class="muted" style="margin-bottom:6px">Overrides (Perms)</div>
+              {% for code in quick_perms %}
+                <label class="pill"><input type="checkbox" name="perm_codes" value="{{ code }}">{{ perm_titles.get(code, code) }}</label>
+              {% endfor %}
+            </div>
+
+            <button type="submit">Apply</button>
+          </div>
+        </form>
+      </div>
+
+      <div class="card danger">
+        <h2 class="h2">حذف نهائي لموظف (Purge)</h2>
+        <div class="muted">يُستخدم بعد تعطيل الموظف. سيحذف السجل من employees + العلاقات (employee_roles + employee_permissions). ويمكن اختيار حذف ضربات الموظف أيضاً.</div>
+
+        <form method="post" action="{{ url_for('admin.employee_purge') }}" onsubmit="return confirm('تأكيد حذف نهائي؟');">
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+            <input name="q" placeholder="employee_id أو username" style="min-width:260px">
+            <label class="pill"><input type="checkbox" name="delete_punches" value="1">Delete punches (attendance + pending)</label>
+            <button class="secondary" type="submit">Purge</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,11 @@
+{
+  "branch_name": "Berliner_Tor",
+  "server": {
+    "base_url": "http://10.98.31.124:8001",
+    "shared_secret": "213b062b260ac9c207c94548d7d3d3b21f3e313c668095d73687bddf5a63da58"
+  },
+  "agent": { "listen_host": "0.0.0.0", "listen_port": 8010 },
+  "device": { "type": "cashier_pc" },
+  "s30": { "ip": "192.168.2.111", "port": 4370 },
+  "logging": { "file": "/mnt/nvme/aljoud-client/logs/agent.log", "level": "INFO" }
+}

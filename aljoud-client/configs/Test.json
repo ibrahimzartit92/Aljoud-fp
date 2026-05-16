@@ -1,0 +1,27 @@
+{
+  "branch_name": "Test",
+
+  "server": {
+    "base_url": "http://10.98.31.124:8001",
+    "shared_secret": "<AGENT_SHARED_SECRET>"
+  },
+
+  "agent": {
+    "listen_host": "0.0.0.0",
+    "listen_port": 8010
+  },
+
+  "device": {
+    "type": "cashier_pc"
+  },
+
+  "s30": {
+    "ip": "192.168.2.111",
+    "port": 4370
+  },
+
+  "logging": {
+    "file": "/mnt/nvme/aljoud-client/logs/agent.log",
+    "level": "INFO"
+  }
+}

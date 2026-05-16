@@ -1,0 +1,92 @@
+{% extends "_base.html" %}
+{% block content %}
+<div class="card">
+  <h1 class="h1">{{ t('devices') }}</h1>
+
+  <div class="card" style="margin-top:12px">
+    <h2 class="h2">Add device</h2>
+    <form method="post" action="{{ url_for('admin.devices_create') }}">
+      <div class="row">
+        <input name="name" placeholder="Name" required>
+
+        <select name="device_type" required>
+          <option value="s30">S30</option>
+          <option value="cashier">Cashier PC</option>
+          <option value="server">Server</option>
+        </select>
+
+        <input name="ip" placeholder="IP / ZeroTier IP" required>
+
+        <input name="port" placeholder="Port (optional)" type="number" min="1" max="65535">
+
+        <input name="agent_base_url" placeholder="Agent URL (e.g. http://192.168.2.101:5010)">
+
+        <select name="branch_id">
+          <option value="">(No branch)</option>
+          {% for b in branches %}
+            <option value="{{ b.id }}">{{ b.name }}</option>
+          {% endfor %}
+        </select>
+
+        <button type="submit">{{ t('add') }}</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2 class="h2">Devices</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>IP</th>
+          <th>Port</th>
+          <th>Agent</th>
+          <th>Branch</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for d in devices %}
+        <tr>
+          <td>{{ d.name }}</td>
+          <td>{{ d.device_type }}</td>
+          <td>{{ d.ip }}</td>
+          <td>{{ d.port or '' }}</td>
+          <td>{{ d.agent_base_url or '' }}</td>
+          <td>{{ d.branch_name or '' }}</td>
+
+          <td>
+            {% if d.last_seen %}
+              {{ d.last_seen }}
+              {% if d.last_latency_ms is not none %}
+                ({{ d.last_latency_ms }} ms)
+              {% endif %}
+            {% else %}
+              -
+            {% endif %}
+          </td>
+
+          <td class="row">
+            <form method="post" action="{{ url_for('admin.devices_test', dev_id=d.id) }}">
+              <button type="submit">Test</button>
+            </form>
+
+            <form method="post" action="{{ url_for('admin.devices_delete', dev_id=d.id) }}">
+              <button class="secondary" type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+
+        {% if devices|length == 0 %}
+          <tr><td colspan="8">No devices</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

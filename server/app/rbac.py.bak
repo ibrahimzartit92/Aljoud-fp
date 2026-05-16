@@ -1,0 +1,27 @@
+from functools import wraps
+from flask import g, abort
+from .db import get_db
+
+def user_has_perm(code: str) -> bool:
+    u = getattr(g, "user", None)
+    if not u:
+        return False
+    if u.get("is_superadmin"):
+        return True
+    db = get_db()
+    row = db.execute(
+        "SELECT 1 FROM employee_roles er JOIN role_permissions rp ON rp.role_id=er.role_id "
+        "WHERE er.employee_id=? AND rp.perm_code=? LIMIT 1",
+        (u["id"], code),
+    ).fetchone()
+    return row is not None
+
+def require_perm(code: str):
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            if not user_has_perm(code):
+                abort(403)
+            return fn(*args, **kwargs)
+        return wrapper
+    return deco

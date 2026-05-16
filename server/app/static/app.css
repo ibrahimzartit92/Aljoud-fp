@@ -1,0 +1,30 @@
+:root{--brand-primary:#b88a2a;--brand-secondary:#111;--brand-font:system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+*{box-sizing:border-box;font-family:var(--brand-font);}
+body{margin:0;background:#0b0b0b;color:#f2f2f2;min-height:100vh;}
+a{color:inherit}
+.bg{position:fixed;inset:0;background-size:cover;background-position:center;filter:brightness(.35);z-index:-2;}
+.overlay{position:fixed;inset:0;background:linear-gradient(120deg,rgba(0,0,0,.7),rgba(0,0,0,.85));z-index:-1;}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.08);backdrop-filter:blur(8px);}
+.brand{display:flex;gap:10px;align-items:center;}
+.brand img{height:34px;width:auto}
+.brand .title{font-weight:700;letter-spacing:.2px}
+.nav{display:flex;gap:10px;flex-wrap:wrap}
+.nav a{padding:8px 10px;border-radius:10px;text-decoration:none;background:rgba(255,255,255,.06);}
+.nav a:hover{background:rgba(255,255,255,.10)}
+.container{padding:18px;max-width:1200px;margin:0 auto;}
+.card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.10);border-radius:16px;padding:14px;margin-bottom:14px;}
+.h1{font-size:20px;margin:0 0 12px 0}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+input,select,textarea{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.12);color:#f2f2f2;padding:10px;border-radius:12px;}
+button{background:var(--brand-primary);color:#111;border:0;border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer;}
+button.secondary{background:rgba(255,255,255,.10);color:#fff;border:1px solid rgba(255,255,255,.15)}
+table{width:100%;border-collapse:separate;border-spacing:0 8px;}
+th{font-size:12px;text-align:left;opacity:.85}
+td{background:rgba(0,0,0,.25);padding:10px;border-top:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)}
+tr td:first-child{border-left:1px solid rgba(255,255,255,.08);border-top-left-radius:12px;border-bottom-left-radius:12px;}
+tr td:last-child{border-right:1px solid rgba(255,255,255,.08);border-top-right-radius:12px;border-bottom-right-radius:12px;}
+.badge{padding:4px 8px;border-radius:999px;font-size:12px;background:rgba(255,255,255,.10)}
+.flash{padding:10px;border-radius:12px;margin-bottom:10px}
+.flash.ok{background:rgba(184,138,42,.22);border:1px solid rgba(184,138,42,.35)}
+.flash.error{background:rgba(255,80,80,.18);border:1px solid rgba(255,80,80,.30)}
+.footer{opacity:.7;font-size:12px;padding:16px 18px;}

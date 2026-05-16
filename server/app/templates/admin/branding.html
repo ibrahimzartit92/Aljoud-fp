@@ -1,0 +1,51 @@
+{% extends "_base.html" %}
+{% block content %}
+<div class="card">
+  <h1 class="h1">{{ t('branding') }}</h1>
+
+  <form method="post" action="{{ url_for('admin.branding_save') }}" enctype="multipart/form-data">
+    <div class="row">
+      <div style="flex:1;min-width:220px">
+        <label>Primary color</label>
+        <input name="primary" value="{{ setting('brand.primary','#b88a2a') }}">
+      </div>
+      <div style="flex:1;min-width:220px">
+        <label>Secondary color</label>
+        <input name="secondary" value="{{ setting('brand.secondary','#111111') }}">
+      </div>
+    </div>
+
+    <div class="row">
+      <div style="flex:1;min-width:220px">
+        <label>Title (AR)</label>
+        <input name="title_ar" value="{{ setting('brand.title_ar','الجود للحضور والانصراف') }}">
+      </div>
+      <div style="flex:1;min-width:220px">
+        <label>Title (DE)</label>
+        <input name="title_de" value="{{ setting('brand.title_de','Aljoud Attendance') }}">
+      </div>
+    </div>
+
+    <div class="row">
+      <div style="flex:1;min-width:220px">
+        <label>Logo</label>
+        <input type="file" name="logo">
+        {% if setting('brand.logo','') %}
+          <div style="margin-top:8px"><img src="/{{ setting('brand.logo','') }}" style="max-height:60px"></div>
+        {% endif %}
+      </div>
+      <div style="flex:1;min-width:220px">
+        <label>Dashboard background</label>
+        <input type="file" name="background">
+        {% if setting('brand.bg','') %}
+          <div style="margin-top:8px;opacity:.8">Current: {{ setting('brand.bg','') }}</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="row" style="justify-content:flex-end;margin-top:12px">
+      <button type="submit">{{ t('save') }}</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,95 @@
+from __future__ import annotations
+
+"""RBAC helpers.
+
+Features:
+- Super Admin bypass via employees.is_superadmin
+- Role-based permissions (roles -> role_permissions)
+- Per-employee permission overrides via employee_permissions (additive grants)
+
+If employee_permissions table is missing (older DB), we fall back gracefully.
+"""
+
+from flask import g, abort
+
+from .db import get_db
+
+
+def _get(u, key, default=None):
+    """Safely read attribute/key from g.user which may be dict or Row-like."""
+    if u is None:
+        return default
+    if isinstance(u, dict):
+        return u.get(key, default)
+    return getattr(u, key, default)
+
+
+def _is_superadmin(u) -> bool:
+    try:
+        return int(_get(u, "is_superadmin", 0) or 0) == 1
+    except Exception:
+        return False
+
+
+def user_has_perm(perm_code: str) -> bool:
+    """Return True if current user has perm_code."""
+    perm_code = (perm_code or "").strip()
+    if not perm_code:
+        return False
+
+    u = getattr(g, "user", None)
+    if not u:
+        return False
+
+    if _is_superadmin(u):
+        return True
+
+    # Prefer stable primary key 'id'
+    uid = _get(u, "id")
+    if uid is None:
+        return False
+
+    db = get_db()
+
+    # 1) Employee-specific grants (optional table)
+    try:
+        row = db.execute(
+            "SELECT 1 FROM employee_permissions WHERE employee_id=? AND perm_code=? LIMIT 1",
+            (uid, perm_code),
+        ).fetchone()
+        if row:
+            return True
+    except Exception:
+        # table missing or schema mismatch: ignore
+        pass
+
+    # 2) Role-based grants
+    row = db.execute(
+        """
+        SELECT 1
+        FROM employee_roles er
+        JOIN role_permissions rp ON rp.role_id = er.role_id
+        WHERE er.employee_id = ? AND rp.perm_code = ?
+        LIMIT 1
+        """,
+        (uid, perm_code),
+    ).fetchone()
+
+    return bool(row)
+
+
+def require_perm(perm_code: str):
+    """Decorator to protect a view by perm_code."""
+
+    def decorator(fn):
+        def wrapper(*args, **kwargs):
+            if not user_has_perm(perm_code):
+                abort(403)
+            return fn(*args, **kwargs)
+
+        # keep Flask debug naming
+        wrapper.__name__ = getattr(fn, "__name__", "wrapped")
+        wrapper.__doc__ = getattr(fn, "__doc__", None)
+        return wrapper
+
+    return decorator

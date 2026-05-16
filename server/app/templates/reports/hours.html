@@ -1,0 +1,199 @@
+{% extends "_base.html" %}
+{% block content %}
+<div class="card">
+  <h1 class="h1">{{ t('reports') if t('reports')!='reports' else 'Reports' }}</h1>
+
+  <div class="card" style="margin-top:12px">
+    <form method="get" action="{{ url_for('reports.hours') }}">
+      <div class="row" style="gap:10px; align-items:end; flex-wrap:wrap;">
+        <div style="min-width:180px">
+          <label style="display:block;opacity:.8;margin-bottom:6px">From</label>
+          <input type="date" name="date_from" value="{{ date_from }}" required>
+        </div>
+
+        <div style="min-width:180px">
+          <label style="display:block;opacity:.8;margin-bottom:6px">To</label>
+          <input type="date" name="date_to" value="{{ date_to }}" required>
+        </div>
+
+        <div style="min-width:220px">
+          <label style="display:block;opacity:.8;margin-bottom:6px">Branch</label>
+          <select name="branch_id">
+            <option value="" {% if not branch_id %}selected{% endif %}>All branches</option>
+            {% for b in branches %}
+              <option value="{{ b.id }}" {% if branch_id and branch_id|int == b.id %}selected{% endif %}>
+                {{ b.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div style="min-width:260px">
+          <label style="display:block;opacity:.8;margin-bottom:6px">Employee</label>
+          <select name="employee_id">
+            <option value="" {% if not employee_id %}selected{% endif %}>All employees</option>
+            {% for e in employees %}
+              <option value="{{ e.employee_id }}" {% if employee_id == e.employee_id %}selected{% endif %}>
+                {{ e.employee_id }} - {{ e.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div style="min-width:200px">
+          <label style="display:block;opacity:.8;margin-bottom:6px">Break</label>
+          <select name="break_policy" id="break_policy">
+            <option value="none" {% if break_policy=='none' %}selected{% endif %}>No break</option>
+            <option value="manual" {% if break_policy=='manual' %}selected{% endif %}>Manual (minutes)</option>
+            <option value="auto" {% if break_policy=='auto' %}selected{% endif %}>Auto (6h=30m, 9h=60m)</option>
+          </select>
+        </div>
+
+        <div style="min-width:180px" id="break_minutes_wrap">
+          <label style="display:block;opacity:.8;margin-bottom:6px">Minutes</label>
+          <input type="number" name="break_minutes" min="0" max="600" value="{{ break_minutes or 0 }}">
+        </div>
+
+        <div>
+          <button type="submit">Filter</button>
+        </div>
+
+        <div style="margin-left:auto; display:flex; gap:12px; align-items:center;">
+          <a href="{{ url_for('reports.hours_xlsx', **request.args) }}" class="btn secondary">Export Excel</a>
+          <a href="{{ url_for('reports.hours_pdf', **request.args) }}" class="btn secondary">Export PDF</a>
+        </div>
+      </div>
+    </form>
+
+    <div style="opacity:.8;margin-top:10px">
+      In بدون Out = 0 ساعات + حالة <b>Incomplete</b>.
+      الحساب يظهر بالساعات وفق التقريب: 0-24 دقيقة = 0، 25-49 = نصف، 50-59 = ساعة.
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2 class="h2">Summary</h2>
+
+    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <div class="card" style="flex:1; min-width:360px;">
+        <h3 class="h2" style="font-size:16px;">Daily totals</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>EmpID</th>
+              <th>Name</th>
+              <th>Date</th>
+              <th>Net Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in daily_rows %}
+            <tr>
+              <td>{{ r['EmpID'] }}</td>
+              <td>{{ r['Name'] }}</td>
+              <td>{{ r['Date'] }}</td>
+              <td>{{ r['Net Hours'] }}</td>
+            </tr>
+            {% endfor %}
+            {% if daily_rows|length == 0 %}
+              <tr><td colspan="4">No data</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="flex:1; min-width:360px;">
+        <h3 class="h2" style="font-size:16px;">Totals</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>EmpID</th>
+              <th>Name</th>
+              <th>Total Net Hours</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in total_rows %}
+            <tr>
+              <td>{{ r['EmpID'] }}</td>
+              <td>{{ r['Name'] }}</td>
+              <td>{{ r['Total Net Hours'] }}</td>
+            </tr>
+            {% endfor %}
+            {% if total_rows|length == 0 %}
+              <tr><td colspan="3">No data</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+
+        <div style="margin-top:10px; opacity:.9">
+          <b>Grand total:</b> {{ grand.net_h_txt if grand else '0' }}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <h2 class="h2">Details (IN → OUT)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>EmpID</th>
+          <th>Name</th>
+          <th>In date</th>
+          <th>In time</th>
+          <th>In branch</th>
+          <th>Out date</th>
+          <th>Out time</th>
+          <th>Out branch</th>
+          <th>Break (min)</th>
+          <th>Net Hours</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.employee_id }}</td>
+          <td>{{ r.emp_name }}</td>
+          <td>{{ r.in_date }}</td>
+          <td>{{ r.in_time }}</td>
+          <td>{{ r.in_branch }}</td>
+          <td>{{ r.out_date }}</td>
+          <td>{{ r.out_time }}</td>
+          <td>{{ r.out_branch }}</td>
+          <td>{{ r.break_min }}</td>
+          <td>{{ r.net_h_txt }}</td>
+          <td>
+            {% if r.status == 'Incomplete' %}
+              <span class="badge" style="opacity:.9">Incomplete</span>
+            {% else %}
+              <span class="badge">OK</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% if rows|length == 0 %}
+          <tr><td colspan="11">No data</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function(){
+  function toggleBreakMinutes(){
+    const pol = document.getElementById('break_policy');
+    const wrap = document.getElementById('break_minutes_wrap');
+    if(!pol || !wrap) return;
+    wrap.style.display = (pol.value === 'manual') ? 'block' : 'none';
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    const pol = document.getElementById('break_policy');
+    if(pol) pol.addEventListener('change', toggleBreakMinutes);
+    toggleBreakMinutes();
+  });
+})();
+</script>
+{% endblock %}
