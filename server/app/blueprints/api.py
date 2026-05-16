@@ -120,12 +120,17 @@ def agent_push_punches():
         try:
             cur = db.execute(
                 """
-                INSERT OR IGNORE INTO pending_attendance
-                  (employee_id, branch_id, device_id, punch_type, ts, source, status)
-                VALUES
-                  (?, ?, ?, ?, ?, 'agent', 'pending')
+                INSERT INTO attendance(employee_id, branch_id, device_id, punch_type, ts,
+                                       approved_by, approved_ts, status)
+                SELECT ?,?,?,?,?, 'auto', ?, 'approved'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM attendance
+                    WHERE employee_id=? AND device_id=? AND ts=?
+                )
                 """,
-                (employee_id, branch_id, device_id, punch_type, ts),
+                (employee_id, branch_id, device_id, punch_type, ts,
+                 datetime.datetime.now().isoformat(timespec="seconds"),
+                 employee_id, device_id, ts),
             )
             if cur.rowcount == 1:
                 inserted += 1

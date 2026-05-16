@@ -144,11 +144,18 @@ def main():
 
             try:
                 cur.execute("""
-                    INSERT INTO pending_attendance
-                      (employee_id, branch_id, device_id, punch_type, ts, source, requested_edit, status)
-                    VALUES
-                      (?, ?, ?, ?, ?, 's30', 0, 'pending')
-                """, (employee_id, branch_id, dev_id, punch_type, ts_iso))
+                    INSERT INTO attendance(employee_id, branch_id, device_id, punch_type, ts,
+                                           approved_by, approved_ts, status)
+                    SELECT ?,?,?,?,?, 'auto', ?, 'approved'
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM attendance
+                        WHERE employee_id=? AND device_id=? AND ts=?
+                    )
+                """, (
+                    employee_id, branch_id, dev_id, punch_type, ts_iso,
+                    datetime.datetime.now().isoformat(timespec="seconds"),
+                    employee_id, dev_id, ts_iso,
+                ))
                 if cur.rowcount:
                     inserted += 1
             except Exception:
