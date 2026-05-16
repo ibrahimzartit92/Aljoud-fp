@@ -21,7 +21,10 @@
     <tbody>
     {% for r in rows %}
       <tr>
-        <td style="white-space:nowrap">{{ r.ts }}</td>
+        <td style="white-space:nowrap">
+          <div>التاريخ: {{ r.ts[:10] }}</div>
+          <div>الوقت: {{ r.ts[11:19] }}</div>
+        </td>
         <td>{{ r.employee_id }}</td>
         <td>{{ r.emp_name or '' }}</td>
         <td>{{ r.branch_name or '' }}</td>
@@ -34,7 +37,8 @@
                 <div style="color:#ffd36a;font-weight:700">تنبيه: الموظف لم يسجل ضربة خروج حتى الساعة 23:59.</div>
                 <div style="opacity:.9">يرجى إدخال وقت انتهاء العمل الفعلي بصيغة 24 ساعة، مثال: 17:30 أو 23:59.</div>
               </div>
-              <input type="time" step="1" name="checkout_time" value="{{ r.ts[11:19] }}" required style="min-width:130px">
+              <input type="date" name="checkout_date" value="{{ r.ts[:10] }}" required style="min-width:130px">
+              <input type="text" name="checkout_time" value="{{ r.ts[11:19] }}" placeholder="مثال: 17:30 أو 23:59" required style="min-width:140px">
             {% endif %}
             <button type="submit">{{ t('approve') }}</button>
           </form>
