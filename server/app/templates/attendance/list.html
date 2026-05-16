@@ -43,8 +43,10 @@
         </td>
 
         <td>
-          <form method="post" action="/attendance/list/{{ r.id }}/edit" class="row" style="gap:8px; flex-wrap:wrap;">
-            <input name="ts" value="{{ r.ts }}" placeholder="YYYY-MM-DDTHH:MM:SS" style="min-width:220px">
+          <form method="post" action="/attendance/list/{{ r.id }}/edit" class="row" style="gap:8px; flex-wrap:wrap;" onsubmit="this.elements['ts'].value=this.querySelector('[data-ts-date]').value + 'T' + this.querySelector('[data-ts-time]').value;">
+            <input type="hidden" name="ts" value="{{ r.ts }}">
+            <input type="date" data-ts-date value="{{ r.ts[:10] }}" placeholder="التاريخ" style="min-width:130px">
+            <input type="time" step="1" data-ts-time value="{{ r.ts[11:19] }}" placeholder="الوقت" style="min-width:120px">
             <input name="note" value="{{ r.edit_note or '' }}" placeholder="ملاحظة اختيارية" style="min-width:160px">
             <button type="submit">حفظ</button>
           </form>
