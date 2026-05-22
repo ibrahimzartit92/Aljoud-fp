@@ -3,8 +3,24 @@
 <div class="card">
   <div class="row" style="justify-content:space-between; align-items:center;">
     <h1 class="h1">{{ t('pending') }}</h1>
-    <div style="opacity:.8">Pending punches require cashier approval</div>
+    <div style="opacity:.8">الضربات بانتظار موافقة المسؤول</div>
   </div>
+
+  {% set ns = namespace(has_missing_checkout=false) %}
+  {% for r in rows %}
+    {% if r.source == 'missing_checkout' %}
+      {% set ns.has_missing_checkout = true %}
+    {% endif %}
+  {% endfor %}
+
+  {% if ns.has_missing_checkout %}
+    <div class="card" style="margin-top:12px;line-height:1.7;border-color:#ffd36a">
+      <div style="color:#ffd36a;font-weight:700">تنبيه: توجد ضربات خروج مفقودة لموظفين لم يسجلوا خروجاً حتى الساعة 23:59.</div>
+      <div style="opacity:.9">يرجى إدخال وقت انتهاء العمل الفعلي بصيغة 24 ساعة، مثال: 17:30 أو 23:59.</div>
+      <div style="opacity:.9">بعد الساعة 00:00 يبدأ يوم دوام جديد، ولا يتم ربط الخروج تلقائياً باليوم السابق. إذا كان الموظف عمل بعد منتصف الليل، يمكن للإدارة اختيار تاريخ ووقت الخروج يدوياً.</div>
+      <div style="opacity:.9">أدخل التاريخ بصيغة يوم/شهر/سنة مثل 16/05/2026.</div>
+    </div>
+  {% endif %}
 
   <table>
     <thead>
@@ -33,15 +49,7 @@
         <td class="row" style="gap:8px">
           <form method="post" action="/attendance/pending/{{ r.id }}/approve">
             {% if r.source == 'missing_checkout' %}
-              <div style="width:100%;margin-bottom:8px;line-height:1.6">
-                <div style="color:#ffd36a;font-weight:700">تنبيه: الموظف لم يسجل ضربة خروج حتى الساعة 23:59.</div>
-                <div style="opacity:.9">يرجى إدخال وقت انتهاء العمل الفعلي بصيغة 24 ساعة، مثال: 17:30 أو 23:59.</div>
-              </div>
-              <div style="width:100%;margin-bottom:8px;line-height:1.6">
-                <div style="opacity:.9">ينتهي يوم الدوام العادي عند الساعة 23:59.</div>
-                <div style="opacity:.9">بعد الساعة 00:00 يبدأ يوم دوام جديد، ولا يتم ربط الخروج تلقائياً باليوم السابق. إذا كان الموظف عمل بعد منتصف الليل، يمكن للإدارة اختيار تاريخ ووقت الخروج يدوياً.</div>
-              </div>
-              <input type="date" name="checkout_date" value="{{ r.ts[:10] }}" required style="min-width:130px">
+              <input type="text" name="checkout_date" value="{{ r.ts[8:10] }}/{{ r.ts[5:7] }}/{{ r.ts[:4] }}" placeholder="DD/MM/YYYY" required style="min-width:130px">
               <input type="text" name="checkout_time" value="{{ r.ts[11:19] }}" placeholder="مثال: 17:30 أو 23:59" required style="min-width:140px">
             {% endif %}
             <button type="submit">{{ t('approve') }}</button>

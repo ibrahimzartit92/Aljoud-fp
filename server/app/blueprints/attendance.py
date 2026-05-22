@@ -172,10 +172,16 @@ def pending_approve(pid: int):
     if row["source"] == "missing_checkout":
         checkout_date = (request.form.get("checkout_date") or "").strip()
         checkout_time = (request.form.get("checkout_time") or "").strip()
+        if not re.match(r"^\d{2}/\d{2}/\d{4}$", checkout_date):
+            flash("تاريخ الخروج يجب أن يكون بصيغة يوم/شهر/سنة مثل 16/05/2026.", "error")
+            return redirect(url_for("attendance.pending"))
         try:
-            datetime.date.fromisoformat(checkout_date)
+            checkout_day, checkout_month, checkout_year = checkout_date.split("/")
+            checkout_date_iso = datetime.date(
+                int(checkout_year), int(checkout_month), int(checkout_day)
+            ).isoformat()
         except Exception:
-            flash("تاريخ الخروج غير صحيح.", "error")
+            flash("تاريخ الخروج يجب أن يكون بصيغة يوم/شهر/سنة مثل 16/05/2026.", "error")
             return redirect(url_for("attendance.pending"))
         if not re.match(r"^\d{2}:\d{2}(:\d{2})?$", checkout_time):
             flash("وقت الخروج يجب أن يكون بصيغة 24 ساعة مثل 17:30 أو 23:59.", "error")
@@ -199,7 +205,7 @@ def pending_approve(pid: int):
             return redirect(url_for("attendance.pending"))
 
         day = str(row["ts"])[:10]
-        checkout_ts = f"{checkout_date}T{checkout_time}"
+        checkout_ts = f"{checkout_date_iso}T{checkout_time}"
 
         in_row = db.execute(
             """
