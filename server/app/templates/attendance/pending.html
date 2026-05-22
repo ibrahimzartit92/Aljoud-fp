@@ -37,6 +37,10 @@
                 <div style="color:#ffd36a;font-weight:700">تنبيه: الموظف لم يسجل ضربة خروج حتى الساعة 23:59.</div>
                 <div style="opacity:.9">يرجى إدخال وقت انتهاء العمل الفعلي بصيغة 24 ساعة، مثال: 17:30 أو 23:59.</div>
               </div>
+              <div style="width:100%;margin-bottom:8px;line-height:1.6">
+                <div style="opacity:.9">ينتهي يوم الدوام العادي عند الساعة 23:59.</div>
+                <div style="opacity:.9">بعد الساعة 00:00 يبدأ يوم دوام جديد، ولا يتم ربط الخروج تلقائياً باليوم السابق. إذا كان الموظف عمل بعد منتصف الليل، يمكن للإدارة اختيار تاريخ ووقت الخروج يدوياً.</div>
+              </div>
               <input type="date" name="checkout_date" value="{{ r.ts[:10] }}" required style="min-width:130px">
               <input type="text" name="checkout_time" value="{{ r.ts[11:19] }}" placeholder="مثال: 17:30 أو 23:59" required style="min-width:140px">
             {% endif %}

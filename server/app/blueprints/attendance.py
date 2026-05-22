@@ -39,24 +39,17 @@ def _table_cols(db, table: str) -> set[str]:
 
 
 def _real_out_exists(db, employee_id: str, device_id, in_ts: str) -> bool:
-    next_in = db.execute(
+    day = str(in_ts or "")[:10]
+    day_end = f"{day}T23:59:59"
+    return db.execute(
         """
-        SELECT ts FROM attendance
-        WHERE employee_id=? AND device_id=? AND punch_type='in' AND ts > ?
-        ORDER BY ts ASC, id ASC
+        SELECT 1 FROM attendance
+        WHERE employee_id=? AND device_id=? AND punch_type='out'
+          AND ts > ? AND ts <= ?
         LIMIT 1
         """,
-        (employee_id, device_id, in_ts),
-    ).fetchone()
-    upper = next_in["ts"] if next_in else None
-
-    params = [employee_id, device_id, in_ts]
-    where = "employee_id=? AND device_id=? AND punch_type='out' AND ts > ?"
-    if upper:
-        where += " AND ts < ?"
-        params.append(upper)
-
-    return db.execute(f"SELECT 1 FROM attendance WHERE {where} LIMIT 1", params).fetchone() is not None
+        (employee_id, device_id, in_ts, day_end),
+    ).fetchone() is not None
 
 
 def _ensure_missing_checkout_proposals(db):
@@ -189,6 +182,16 @@ def pending_approve(pid: int):
             return redirect(url_for("attendance.pending"))
         if len(checkout_time) == 5:
             checkout_time += ":00"
+        hour_s, minute_s, second_s = checkout_time.split(":")
+        hour = int(hour_s)
+        minute = int(minute_s)
+        second = int(second_s)
+        if hour > 23:
+            flash("وقت الخروج يجب أن يكون بصيغة 24 ساعة صحيحة بين 00:00 و 23:59.", "error")
+            return redirect(url_for("attendance.pending"))
+        if minute > 59 or second > 59:
+            flash("وقت الخروج يجب أن يكون بصيغة 24 ساعة مثل 17:30 أو 23:59.", "error")
+            return redirect(url_for("attendance.pending"))
         try:
             datetime.time.fromisoformat(checkout_time)
         except Exception:
