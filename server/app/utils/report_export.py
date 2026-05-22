@@ -30,7 +30,8 @@ def export_hours_excel(rows_or_pack, header_text: str):
 
     def write_sheet(title: str, rows: list[dict]):
         ws = wb.create_sheet(title=title)
-        ws.append([header_text or "ALJOUD"])
+        ws.sheet_view.rightToLeft = True
+        ws.append([header_text or "تقرير ساعات العمل"])
         ws.append([])
         if rows:
             keys = list(rows[0].keys())
@@ -48,20 +49,20 @@ def export_hours_excel(rows_or_pack, header_text: str):
         totals = rows_or_pack.get("totals") or []
         grand = rows_or_pack.get("grand") or {}
 
-        write_sheet("Daily", daily)
-        write_sheet("Totals", totals)
-        write_sheet("Sessions", sessions)
+        write_sheet("اليومي", daily)
+        write_sheet("الإجماليات", totals)
+        write_sheet("الجلسات", sessions)
 
         # small grand row on Totals sheet
         if totals:
-            ws = wb["Totals"]
+            ws = wb["الإجماليات"]
             ws.append([])
-            ws.append(["GRAND TOTAL", "", grand.get("net_time_txt", "00:00")])
+            ws.append(["الإجمالي العام", "", grand.get("net_time_txt", "00:00")])
             _autosize_worksheet(ws)
 
     else:
         # legacy list
-        write_sheet("الساعات", rows_or_pack or [])
+        write_sheet("الجلسات", rows_or_pack or [])
 
     out = io.BytesIO()
     wb.save(out)
@@ -79,14 +80,16 @@ def export_hours_pdf(rows_or_pack, header_text: str):
     styles = getSampleStyleSheet()
     story = []
 
-    story.append(Paragraph(header_text or "ALJOUD Time Report", styles["Title"]))
+    # Proper Arabic PDF shaping may require an Arabic font plus shaping/bidi support later.
+    # This keeps PDF generation dependency-free for now while translating visible labels.
+    story.append(Paragraph(header_text or "تقرير ساعات العمل", styles["Title"]))
     story.append(Spacer(1, 10))
 
     def add_table(title: str, rows: list[dict], max_rows=45):
         story.append(Paragraph(title, styles["Heading2"]))
         story.append(Spacer(1, 6))
         if not rows:
-            story.append(Paragraph("No data", styles["Normal"]))
+            story.append(Paragraph("لا توجد بيانات", styles["Normal"]))
             story.append(Spacer(1, 10))
             return
 
@@ -108,21 +111,21 @@ def export_hours_pdf(rows_or_pack, header_text: str):
         story.append(tbl)
         if len(rows) > max_rows:
             story.append(Spacer(1, 6))
-            story.append(Paragraph(f"(Showing first {max_rows} rows of {len(rows)})", styles["Normal"]))
+            story.append(Paragraph(f"يتم عرض أول {max_rows} صف من أصل {len(rows)}", styles["Normal"]))
         story.append(Spacer(1, 14))
 
     if isinstance(rows_or_pack, dict):
-        add_table("Daily totals (per employee per day)", rows_or_pack.get("daily") or [])
-        add_table("Totals (per employee)", rows_or_pack.get("totals") or [])
+        add_table("الإجماليات اليومية لكل موظف", rows_or_pack.get("daily") or [])
+        add_table("إجماليات الموظفين", rows_or_pack.get("totals") or [])
 
         grand = rows_or_pack.get("grand") or {}
-        story.append(Paragraph(f"GRAND TOTAL (صافي الوقت): {grand.get('net_time_txt','00:00')}", styles["Heading3"]))
+        story.append(Paragraph(f"الإجمالي العام (صافي الوقت): {grand.get('net_time_txt','00:00')}", styles["Heading3"]))
         story.append(Spacer(1, 14))
 
         story.append(PageBreak())
-        add_table("Sessions (details)", rows_or_pack.get("sessions") or [], max_rows=60)
+        add_table("تفاصيل الجلسات", rows_or_pack.get("sessions") or [], max_rows=60)
     else:
-        add_table("Sessions", rows_or_pack or [], max_rows=60)
+        add_table("الجلسات", rows_or_pack or [], max_rows=60)
 
     doc.build(story)
     out.seek(0)

@@ -22,6 +22,14 @@ def fmt_duration_hhmm(total_minutes: int) -> str:
     return f"{h:02d}:{m:02d}"
 
 
+def _export_status_label(status: str) -> str:
+    if status == "OK":
+        return "مكتمل"
+    if status == "Incomplete":
+        return "غير مكتمل"
+    return status or ""
+
+
 # --------- shared query + session builder ---------
 def _fetch_punches(
     db,
@@ -238,35 +246,35 @@ def _export_pack(sessions: list[dict]) -> dict:
     export_daily_rows = []
     for r in daily_rows:
         export_daily_rows.append({
-            "EmpID": r.get("EmpID", ""),
-            "Name": r.get("Name", ""),
-            "Date": r.get("Date", ""),
+            "رقم الموظف": r.get("EmpID", ""),
+            "الاسم": r.get("Name", ""),
+            "التاريخ": r.get("Date", ""),
             "صافي الوقت": r.get("net_time_txt", "00:00"),
         })
 
     export_total_rows = []
     for r in emp_totals:
         export_total_rows.append({
-            "EmpID": r.get("EmpID", ""),
-            "Name": r.get("Name", ""),
+            "رقم الموظف": r.get("EmpID", ""),
+            "الاسم": r.get("Name", ""),
             "إجمالي صافي الوقت": r.get("total_net_time_txt", "00:00"),
         })
 
     sess_rows = []
     for s in sessions:
         sess_rows.append({
-            "EmpID": s.get("employee_id", ""),
-            "Name": s.get("emp_name", ""),
-            "In Date": s.get("in_date", ""),
-            "In Time": s.get("in_time", ""),
-            "In Branch": s.get("in_branch", ""),
-            "Out Date": s.get("out_date", ""),
-            "Out Time": s.get("out_time", ""),
-            "Out Branch": s.get("out_branch", ""),
+            "رقم الموظف": s.get("employee_id", ""),
+            "الاسم": s.get("emp_name", ""),
+            "تاريخ الدخول": s.get("in_date", ""),
+            "وقت الدخول": s.get("in_time", ""),
+            "فرع الدخول": s.get("in_branch", ""),
+            "تاريخ الخروج": s.get("out_date", ""),
+            "وقت الخروج": s.get("out_time", ""),
+            "فرع الخروج": s.get("out_branch", ""),
             "إجمالي الوقت": s.get("work_time_txt", "00:00"),
             "الاستراحة": s.get("break_time_txt", "00:00"),
             "صافي الوقت": s.get("net_time_txt", "00:00"),
-            "Status": s.get("status", ""),
+            "الحالة": _export_status_label(s.get("status", "")),
         })
 
     return {
@@ -377,7 +385,7 @@ def hours_xlsx():
     sessions = _build_sessions(punches, break_policy=break_policy, break_minutes_manual=break_minutes_manual)
     pack = _export_pack(sessions)
 
-    out = export_hours_excel(pack, "ALJOUD Time Report")
+    out = export_hours_excel(pack, "تقرير ساعات العمل")
     return send_file(
         out,
         as_attachment=True,
@@ -397,5 +405,5 @@ def hours_pdf():
     sessions = _build_sessions(punches, break_policy=break_policy, break_minutes_manual=break_minutes_manual)
     pack = _export_pack(sessions)
 
-    out = export_hours_pdf(pack, "ALJOUD Time Report")
+    out = export_hours_pdf(pack, "تقرير ساعات العمل")
     return send_file(out, as_attachment=True, download_name="hours.pdf", mimetype="application/pdf")

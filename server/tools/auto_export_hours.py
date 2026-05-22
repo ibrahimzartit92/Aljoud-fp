@@ -127,6 +127,14 @@ def fmt_duration_hhmm(total_minutes: int) -> str:
     return f"{h:02d}:{m:02d}"
 
 
+def export_status_label(status: str) -> str:
+    if status == "OK":
+        return "مكتمل"
+    if status in ("Incomplete", "Unvollständig", "Unvollstأ¤ndig"):
+        return "غير مكتمل"
+    return status or ""
+
+
 def compute_break_minutes(work_minutes: int, policy: str, manual_min: int) -> int:
     """
     policy:
@@ -334,9 +342,9 @@ def aggregate_daily_and_totals(
     daily_rows: List[Dict[str, Any]] = []
     for (emp, d), net_min in sorted(daily_map.items(), key=lambda x: (x[0][0], x[0][1])):
         daily_rows.append({
-            "Mitarbeiter-ID": emp,
-            "Name": emp_names.get(emp, ""),
-            "Datum": d,
+            "employee_id": emp,
+            "name": emp_names.get(emp, ""),
+            "date": d,
             "net_time_txt": fmt_duration_hhmm(net_min),
         })
 
@@ -347,8 +355,8 @@ def aggregate_daily_and_totals(
     totals_rows: List[Dict[str, Any]] = []
     for emp, net_min in sorted(emp_sum.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else str(x[0])):
         totals_rows.append({
-            "Mitarbeiter-ID": emp,
-            "Name": emp_names.get(emp, ""),
+            "employee_id": emp,
+            "name": emp_names.get(emp, ""),
             "total_net_time_txt": fmt_duration_hhmm(net_min),
         })
 
@@ -366,35 +374,35 @@ def export_pack_from_sessions(sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
     export_daily_rows: List[Dict[str, Any]] = []
     for r in daily_rows:
         export_daily_rows.append({
-            "Mitarbeiter-ID": r.get("Mitarbeiter-ID", ""),
-            "Name": r.get("Name", ""),
-            "Datum": r.get("Datum", ""),
+            "رقم الموظف": r.get("employee_id", ""),
+            "الاسم": r.get("name", ""),
+            "التاريخ": r.get("date", ""),
             "صافي الوقت": r.get("net_time_txt", "00:00"),
         })
 
     export_total_rows: List[Dict[str, Any]] = []
     for r in totals_rows:
         export_total_rows.append({
-            "Mitarbeiter-ID": r.get("Mitarbeiter-ID", ""),
-            "Name": r.get("Name", ""),
+            "رقم الموظف": r.get("employee_id", ""),
+            "الاسم": r.get("name", ""),
             "إجمالي صافي الوقت": r.get("total_net_time_txt", "00:00"),
         })
 
     sess_rows: List[Dict[str, Any]] = []
     for s in sessions:
         sess_rows.append({
-            "Mitarbeiter-ID": s.get("employee_id", ""),
-            "Name": s.get("emp_name", ""),
-            "Datum (Eingang)": s.get("in_date", ""),
-            "Zeit (Eingang)": s.get("in_time", ""),
-            "Filiale (Eingang)": s.get("in_branch", ""),
-            "Datum (Ausgang)": s.get("out_date", ""),
-            "Zeit (Ausgang)": s.get("out_time", ""),
-            "Filiale (Ausgang)": s.get("out_branch", ""),
+            "رقم الموظف": s.get("employee_id", ""),
+            "الاسم": s.get("emp_name", ""),
+            "تاريخ الدخول": s.get("in_date", ""),
+            "وقت الدخول": s.get("in_time", ""),
+            "فرع الدخول": s.get("in_branch", ""),
+            "تاريخ الخروج": s.get("out_date", ""),
+            "وقت الخروج": s.get("out_time", ""),
+            "فرع الخروج": s.get("out_branch", ""),
             "إجمالي الوقت": s.get("arbeitszeit_txt", "00:00"),
             "الاستراحة": s.get("pause_txt", "00:00"),
             "صافي الوقت": s.get("netto_txt", "00:00"),
-            "Status": s.get("status", ""),
+            "الحالة": export_status_label(s.get("status", "")),
         })
 
     return {
@@ -581,7 +589,7 @@ def main(argv: List[str]) -> int:
     export_root = env("ALJOUD_EXPORT_DIR", "/mnt/nvme/exports")
     break_policy = env("ALJOUD_BREAK_POLICY", "manual") or "manual"
     break_minutes_manual = as_int(env("ALJOUD_BREAK_MINUTES", "30"), 30)
-    title = env("ALJOUD_REPORT_TITLE", "ALJOUD – Stundenbericht (Arbeitszeiten)") or "ALJOUD – Stundenbericht (Arbeitszeiten)"
+    title = env("ALJOUD_REPORT_TITLE", "تقرير ساعات العمل") or "تقرير ساعات العمل"
 
     # toggles
     do_xlsx = not args.no_xlsx
