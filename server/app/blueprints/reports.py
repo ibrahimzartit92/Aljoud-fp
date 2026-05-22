@@ -11,35 +11,15 @@ from ..utils.report_export import export_hours_excel, export_hours_pdf
 bp = Blueprint("reports", __name__, url_prefix="/reports")
 
 
-# --------- rounding helpers (your scheme) ---------
-def round_hours_05(total_minutes: int) -> float:
-    """
-    Your rounding scheme:
-      0-24  -> +0.0
-      25-49 -> +0.5
-      50-59 -> +1.0
-    Examples:
-      8h15m -> 8
-      8h25m -> 8.5
-      8h45m -> 8.5
-      8h50m -> 9
-    """
-    if not total_minutes or total_minutes <= 0:
-        return 0.0
-    h = total_minutes // 60
-    m = total_minutes % 60
-    if m < 25:
-        return float(h)
-    if m < 50:
-        return float(h) + 0.5
-    return float(h + 1)
-
-
-def fmt_hours(h: float) -> str:
-    # show 8 or 8.5 (not 8.0)
-    if abs(h - int(h)) < 1e-9:
-        return str(int(h))
-    return str(h).rstrip("0").rstrip(".")
+def fmt_duration_hhmm(total_minutes: int) -> str:
+    try:
+        minutes = int(total_minutes or 0)
+    except Exception:
+        minutes = 0
+    minutes = max(0, minutes)
+    h = minutes // 60
+    m = minutes % 60
+    return f"{h:02d}:{m:02d}"
 
 
 # --------- shared query + session builder ---------
@@ -138,9 +118,6 @@ def _build_sessions(
             br = compute_break_minutes(work_minutes)
             net_minutes = max(0, work_minutes - br)
 
-            work_h = round_hours_05(work_minutes)
-            net_h = round_hours_05(net_minutes)
-
             sessions.append({
                 "employee_id": emp,
                 "emp_name": pin.get("emp_name") or p.get("emp_name") or "",
@@ -158,11 +135,9 @@ def _build_sessions(
                 "break_min": br,
                 "work_min": work_minutes,
                 "net_min": net_minutes,
-
-                "work_h": work_h,
-                "net_h": net_h,
-                "work_h_txt": fmt_hours(work_h),
-                "net_h_txt": fmt_hours(net_h),
+                "break_time_txt": fmt_duration_hhmm(br),
+                "work_time_txt": fmt_duration_hhmm(work_minutes),
+                "net_time_txt": fmt_duration_hhmm(net_minutes),
 
                 "status": "OK",
             })
@@ -189,11 +164,9 @@ def _build_sessions(
             "break_min": 0,
             "work_min": 0,
             "net_min": 0,
-
-            "work_h": 0.0,
-            "net_h": 0.0,
-            "work_h_txt": "0",
-            "net_h_txt": "0",
+            "break_time_txt": "00:00",
+            "work_time_txt": "00:00",
+            "net_time_txt": "00:00",
 
             "status": "Incomplete",
         })
@@ -223,12 +196,11 @@ def _aggregate_daily_and_totals(sessions: list[dict]) -> tuple[list[dict], list[
 
     daily_rows: list[dict] = []
     for (emp, d), net_min in sorted(daily_map.items(), key=lambda x: (x[0][0], x[0][1])):
-        h = round_hours_05(net_min)
         daily_rows.append({
             "EmpID": emp,
             "Name": emp_names.get(emp, ""),
             "Date": d,
-            "Net Hours": fmt_hours(h),
+            "net_time_txt": fmt_duration_hhmm(net_min),
             "_net_min": net_min,
         })
 
@@ -238,17 +210,18 @@ def _aggregate_daily_and_totals(sessions: list[dict]) -> tuple[list[dict], list[
 
     emp_totals: list[dict] = []
     for emp, net_min in sorted(emp_sum.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else str(x[0])):
-        h = round_hours_05(net_min)
         emp_totals.append({
             "EmpID": emp,
             "Name": emp_names.get(emp, ""),
-            "Total Net Hours": fmt_hours(h),
+            "total_net_time_txt": fmt_duration_hhmm(net_min),
             "_net_min": net_min,
         })
 
     grand_min = sum(int(r["_net_min"]) for r in emp_totals)
-    grand_h = round_hours_05(grand_min)
-    grand = {"net_min": grand_min, "net_h": grand_h, "net_h_txt": fmt_hours(grand_h)}
+    grand = {
+        "net_min": grand_min,
+        "net_time_txt": fmt_duration_hhmm(grand_min),
+    }
 
     # cleanup helper
     for r in daily_rows:
@@ -262,6 +235,23 @@ def _aggregate_daily_and_totals(sessions: list[dict]) -> tuple[list[dict], list[
 def _export_pack(sessions: list[dict]) -> dict:
     daily_rows, emp_totals, grand = _aggregate_daily_and_totals(sessions)
 
+    export_daily_rows = []
+    for r in daily_rows:
+        export_daily_rows.append({
+            "EmpID": r.get("EmpID", ""),
+            "Name": r.get("Name", ""),
+            "Date": r.get("Date", ""),
+            "صافي الوقت": r.get("net_time_txt", "00:00"),
+        })
+
+    export_total_rows = []
+    for r in emp_totals:
+        export_total_rows.append({
+            "EmpID": r.get("EmpID", ""),
+            "Name": r.get("Name", ""),
+            "إجمالي صافي الوقت": r.get("total_net_time_txt", "00:00"),
+        })
+
     sess_rows = []
     for s in sessions:
         sess_rows.append({
@@ -273,15 +263,16 @@ def _export_pack(sessions: list[dict]) -> dict:
             "Out Date": s.get("out_date", ""),
             "Out Time": s.get("out_time", ""),
             "Out Branch": s.get("out_branch", ""),
-            "Break (min)": s.get("break_min", 0),
-            "Net Hours": s.get("net_h_txt", "0"),
+            "إجمالي الوقت": s.get("work_time_txt", "00:00"),
+            "الاستراحة": s.get("break_time_txt", "00:00"),
+            "صافي الوقت": s.get("net_time_txt", "00:00"),
             "Status": s.get("status", ""),
         })
 
     return {
         "sessions": sess_rows,
-        "daily": daily_rows,
-        "totals": emp_totals,
+        "daily": export_daily_rows,
+        "totals": export_total_rows,
         "grand": grand,
     }
 
@@ -386,7 +377,7 @@ def hours_xlsx():
     sessions = _build_sessions(punches, break_policy=break_policy, break_minutes_manual=break_minutes_manual)
     pack = _export_pack(sessions)
 
-    out = export_hours_excel(pack, "ALJOUD Hours Report")
+    out = export_hours_excel(pack, "ALJOUD Time Report")
     return send_file(
         out,
         as_attachment=True,
@@ -406,5 +397,5 @@ def hours_pdf():
     sessions = _build_sessions(punches, break_policy=break_policy, break_minutes_manual=break_minutes_manual)
     pack = _export_pack(sessions)
 
-    out = export_hours_pdf(pack, "ALJOUD Hours Report")
+    out = export_hours_pdf(pack, "ALJOUD Time Report")
     return send_file(out, as_attachment=True, download_name="hours.pdf", mimetype="application/pdf")

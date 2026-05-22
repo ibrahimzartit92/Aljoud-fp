@@ -41,7 +41,7 @@
         </div>
 
         <div style="min-width:200px">
-          <label style="display:block;opacity:.8;margin-bottom:6px">Break</label>
+          <label style="display:block;opacity:.8;margin-bottom:6px">الاستراحة</label>
           <select name="break_policy" id="break_policy">
             <option value="none" {% if break_policy=='none' %}selected{% endif %}>No break</option>
             <option value="manual" {% if break_policy=='manual' %}selected{% endif %}>Manual (minutes)</option>
@@ -50,7 +50,7 @@
         </div>
 
         <div style="min-width:180px" id="break_minutes_wrap">
-          <label style="display:block;opacity:.8;margin-bottom:6px">Minutes</label>
+          <label style="display:block;opacity:.8;margin-bottom:6px">الدقائق</label>
           <input type="number" name="break_minutes" min="0" max="600" value="{{ break_minutes or 0 }}">
         </div>
 
@@ -67,7 +67,7 @@
 
     <div style="opacity:.8;margin-top:10px">
       In بدون Out = 0 ساعات + حالة <b>Incomplete</b>.
-      الحساب يظهر بالساعات وفق التقريب: 0-24 دقيقة = 0، 25-49 = نصف، 50-59 = ساعة.
+      يتم عرض الوقت بصيغة HH:MM بدون تقريب.
     </div>
   </div>
 
@@ -83,7 +83,7 @@
               <th>EmpID</th>
               <th>Name</th>
               <th>Date</th>
-              <th>Net Hours</th>
+              <th>صافي الوقت</th>
             </tr>
           </thead>
           <tbody>
@@ -92,7 +92,7 @@
               <td>{{ r['EmpID'] }}</td>
               <td>{{ r['Name'] }}</td>
               <td>{{ r['Date'] }}</td>
-              <td>{{ r['Net Hours'] }}</td>
+              <td>{{ r.net_time_txt }}</td>
             </tr>
             {% endfor %}
             {% if daily_rows|length == 0 %}
@@ -109,7 +109,7 @@
             <tr>
               <th>EmpID</th>
               <th>Name</th>
-              <th>Total Net Hours</th>
+              <th>إجمالي صافي الوقت</th>
             </tr>
           </thead>
           <tbody>
@@ -117,7 +117,7 @@
             <tr>
               <td>{{ r['EmpID'] }}</td>
               <td>{{ r['Name'] }}</td>
-              <td>{{ r['Total Net Hours'] }}</td>
+              <td>{{ r.total_net_time_txt }}</td>
             </tr>
             {% endfor %}
             {% if total_rows|length == 0 %}
@@ -127,7 +127,7 @@
         </table>
 
         <div style="margin-top:10px; opacity:.9">
-          <b>Grand total:</b> {{ grand.net_h_txt if grand else '0' }}
+          <b>Grand total:</b> {{ grand.net_time_txt if grand else '00:00' }}
         </div>
       </div>
     </div>
@@ -146,8 +146,9 @@
           <th>Out date</th>
           <th>Out time</th>
           <th>Out branch</th>
-          <th>Break (min)</th>
-          <th>Net Hours</th>
+          <th>إجمالي الوقت</th>
+          <th>الاستراحة</th>
+          <th>صافي الوقت</th>
           <th>Status</th>
         </tr>
       </thead>
@@ -162,8 +163,9 @@
           <td>{{ r.out_date }}</td>
           <td>{{ r.out_time }}</td>
           <td>{{ r.out_branch }}</td>
-          <td>{{ r.break_min }}</td>
-          <td>{{ r.net_h_txt }}</td>
+          <td>{{ r.work_time_txt }}</td>
+          <td>{{ r.break_time_txt }}</td>
+          <td>{{ r.net_time_txt }}</td>
           <td>
             {% if r.status == 'Incomplete' %}
               <span class="badge" style="opacity:.9">Incomplete</span>
@@ -174,7 +176,7 @@
         </tr>
         {% endfor %}
         {% if rows|length == 0 %}
-          <tr><td colspan="11">No data</td></tr>
+          <tr><td colspan="12">No data</td></tr>
         {% endif %}
       </tbody>
     </table>

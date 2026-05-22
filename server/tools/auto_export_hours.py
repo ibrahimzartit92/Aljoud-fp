@@ -116,33 +116,15 @@ def prev_month_range(today: dt.date) -> Tuple[dt.date, dt.date, str]:
     return first_prev, last_prev, label
 
 
-# -------------------------
-# rounding + break policy
-# -------------------------
-def round_hours_05(total_minutes: int) -> float:
-    """
-    User scheme:
-      0-24  -> +0.0
-      25-49 -> +0.5
-      50-59 -> +1.0
-    """
-    if not total_minutes or total_minutes <= 0:
-        return 0.0
-    h = total_minutes // 60
-    m = total_minutes % 60
-    if m < 25:
-        return float(h)
-    if m < 50:
-        return float(h) + 0.5
-    return float(h + 1)
-
-
-def fmt_hours(h: float) -> str:
-    # show "8" or "8.5" (not 8.0)
-    if abs(h - int(h)) < 1e-9:
-        return str(int(h))
-    s = str(h)
-    return s.rstrip("0").rstrip(".")
+def fmt_duration_hhmm(total_minutes: int) -> str:
+    try:
+        minutes = int(total_minutes or 0)
+    except Exception:
+        minutes = 0
+    minutes = max(0, minutes)
+    h = minutes // 60
+    m = minutes % 60
+    return f"{h:02d}:{m:02d}"
 
 
 def compute_break_minutes(work_minutes: int, policy: str, manual_min: int) -> int:
@@ -280,9 +262,6 @@ def build_sessions(
             br = compute_break_minutes(work_min, break_policy, break_minutes_manual)
             net_min = max(0, work_min - br)
 
-            work_h = round_hours_05(work_min)
-            net_h = round_hours_05(net_min)
-
             sessions.append({
                 "employee_id": emp,
                 "emp_name": pin.get("emp_name") or p.get("emp_name") or "",
@@ -298,9 +277,9 @@ def build_sessions(
                 "pause_min": br,
                 "arbeitszeit_min": work_min,
                 "netto_min": net_min,
-
-                "arbeitszeit_h": fmt_hours(work_h),
-                "netto_h": fmt_hours(net_h),
+                "pause_txt": fmt_duration_hhmm(br),
+                "arbeitszeit_txt": fmt_duration_hhmm(work_min),
+                "netto_txt": fmt_duration_hhmm(net_min),
 
                 "status": "OK",
             })
@@ -323,8 +302,9 @@ def build_sessions(
             "pause_min": 0,
             "arbeitszeit_min": 0,
             "netto_min": 0,
-            "arbeitszeit_h": "0",
-            "netto_h": "0",
+            "pause_txt": "00:00",
+            "arbeitszeit_txt": "00:00",
+            "netto_txt": "00:00",
             "status": "Unvollständig",
         })
 
@@ -353,12 +333,11 @@ def aggregate_daily_and_totals(
 
     daily_rows: List[Dict[str, Any]] = []
     for (emp, d), net_min in sorted(daily_map.items(), key=lambda x: (x[0][0], x[0][1])):
-        h = round_hours_05(net_min)
         daily_rows.append({
             "Mitarbeiter-ID": emp,
             "Name": emp_names.get(emp, ""),
             "Datum": d,
-            "Netto-Stunden": fmt_hours(h),
+            "net_time_txt": fmt_duration_hhmm(net_min),
         })
 
     emp_sum: Dict[str, int] = {}
@@ -367,21 +346,39 @@ def aggregate_daily_and_totals(
 
     totals_rows: List[Dict[str, Any]] = []
     for emp, net_min in sorted(emp_sum.items(), key=lambda x: int(x[0]) if str(x[0]).isdigit() else str(x[0])):
-        h = round_hours_05(net_min)
         totals_rows.append({
             "Mitarbeiter-ID": emp,
             "Name": emp_names.get(emp, ""),
-            "Gesamt Netto-Stunden": fmt_hours(h),
+            "total_net_time_txt": fmt_duration_hhmm(net_min),
         })
 
     grand_min = sum(emp_sum.values())
-    grand_h = round_hours_05(grand_min)
-    grand = {"net_min": grand_min, "net_h": grand_h, "net_h_txt": fmt_hours(grand_h)}
+    grand = {
+        "net_min": grand_min,
+        "net_time_txt": fmt_duration_hhmm(grand_min),
+    }
     return daily_rows, totals_rows, grand
 
 
 def export_pack_from_sessions(sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
     daily_rows, totals_rows, grand = aggregate_daily_and_totals(sessions)
+
+    export_daily_rows: List[Dict[str, Any]] = []
+    for r in daily_rows:
+        export_daily_rows.append({
+            "Mitarbeiter-ID": r.get("Mitarbeiter-ID", ""),
+            "Name": r.get("Name", ""),
+            "Datum": r.get("Datum", ""),
+            "صافي الوقت": r.get("net_time_txt", "00:00"),
+        })
+
+    export_total_rows: List[Dict[str, Any]] = []
+    for r in totals_rows:
+        export_total_rows.append({
+            "Mitarbeiter-ID": r.get("Mitarbeiter-ID", ""),
+            "Name": r.get("Name", ""),
+            "إجمالي صافي الوقت": r.get("total_net_time_txt", "00:00"),
+        })
 
     sess_rows: List[Dict[str, Any]] = []
     for s in sessions:
@@ -394,15 +391,15 @@ def export_pack_from_sessions(sessions: List[Dict[str, Any]]) -> Dict[str, Any]:
             "Datum (Ausgang)": s.get("out_date", ""),
             "Zeit (Ausgang)": s.get("out_time", ""),
             "Filiale (Ausgang)": s.get("out_branch", ""),
-            "Pause (Min.)": s.get("pause_min", 0),
-            "Arbeitszeit (h)": s.get("arbeitszeit_h", "0"),
-            "Netto (h)": s.get("netto_h", "0"),
+            "إجمالي الوقت": s.get("arbeitszeit_txt", "00:00"),
+            "الاستراحة": s.get("pause_txt", "00:00"),
+            "صافي الوقت": s.get("netto_txt", "00:00"),
             "Status": s.get("status", ""),
         })
 
     return {
-        "daily": daily_rows,
-        "totals": totals_rows,
+        "daily": export_daily_rows,
+        "totals": export_total_rows,
         "sessions": sess_rows,
         "grand": grand,
     }

@@ -56,12 +56,12 @@ def export_hours_excel(rows_or_pack, header_text: str):
         if totals:
             ws = wb["Totals"]
             ws.append([])
-            ws.append(["GRAND TOTAL", "", grand.get("net_h_txt", "")])
+            ws.append(["GRAND TOTAL", "", grand.get("net_time_txt", "00:00")])
             _autosize_worksheet(ws)
 
     else:
         # legacy list
-        write_sheet("Hours", rows_or_pack or [])
+        write_sheet("الساعات", rows_or_pack or [])
 
     out = io.BytesIO()
     wb.save(out)
@@ -79,7 +79,7 @@ def export_hours_pdf(rows_or_pack, header_text: str):
     styles = getSampleStyleSheet()
     story = []
 
-    story.append(Paragraph(header_text or "ALJOUD Hours Report", styles["Title"]))
+    story.append(Paragraph(header_text or "ALJOUD Time Report", styles["Title"]))
     story.append(Spacer(1, 10))
 
     def add_table(title: str, rows: list[dict], max_rows=45):
@@ -116,7 +116,7 @@ def export_hours_pdf(rows_or_pack, header_text: str):
         add_table("Totals (per employee)", rows_or_pack.get("totals") or [])
 
         grand = rows_or_pack.get("grand") or {}
-        story.append(Paragraph(f"GRAND TOTAL (Net Hours): {grand.get('net_h_txt','0')}", styles["Heading3"]))
+        story.append(Paragraph(f"GRAND TOTAL (صافي الوقت): {grand.get('net_time_txt','00:00')}", styles["Heading3"]))
         story.append(Spacer(1, 14))
 
         story.append(PageBreak())
