@@ -120,6 +120,21 @@ CREATE TABLE IF NOT EXISTS pending_attendance (
   FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS long_session_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  in_attendance_id INTEGER NOT NULL,
+  out_attendance_id INTEGER NOT NULL,
+  employee_id TEXT NOT NULL,
+  in_ts TEXT NOT NULL,
+  out_ts TEXT NOT NULL,
+  duration_min INTEGER NOT NULL,
+  decision TEXT NOT NULL,
+  reviewed_by TEXT,
+  reviewed_ts TEXT NOT NULL,
+  note TEXT,
+  UNIQUE(in_attendance_id, out_attendance_id)
+);
+
 CREATE TABLE IF NOT EXISTS export_profiles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,

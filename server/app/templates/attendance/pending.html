@@ -1,69 +1,178 @@
 {% extends "_base.html" %}
 {% block content %}
-<div class="card">
+<style>
+  .pending-compact table th,
+  .pending-compact table td { padding: 6px 8px; vertical-align: middle; }
+  .pending-compact input { padding: 5px 7px; font-size: 13px; }
+  .pending-compact button { padding: 6px 10px; font-size: 13px; }
+  .pending-compact .section-title { margin: 0 0 10px; font-size: 20px; }
+  .pending-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .pending-actions form { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0; }
+  .pending-help { margin: 10px 0; line-height: 1.6; border-color: #ffd36a; }
+  .pending-note { min-width: 130px; max-width: 180px; }
+</style>
+
+<div class="card pending-compact">
   <div class="row" style="justify-content:space-between; align-items:center;">
     <h1 class="h1">{{ t('pending') }}</h1>
     <div style="opacity:.8">الضربات بانتظار موافقة المسؤول</div>
   </div>
 
-  {% set ns = namespace(has_missing_checkout=false) %}
-  {% for r in rows %}
-    {% if r.source == 'missing_checkout' %}
-      {% set ns.has_missing_checkout = true %}
+  <section class="card" style="margin-top:12px">
+    <h2 class="section-title">الموظفون الذين نسوا تسجيل الخروج</h2>
+    {% if missing_checkout_rows|length > 0 %}
+      <div class="card pending-help">
+        <div style="color:#ffd36a;font-weight:700">تنبيه: توجد ضربات خروج مفقودة لموظفين لم يسجلوا خروجاً حتى الساعة 23:59.</div>
+        <div style="opacity:.9">يرجى إدخال وقت انتهاء العمل الفعلي بصيغة 24 ساعة، مثال: 17:30 أو 23:59.</div>
+        <div style="opacity:.9">بعد الساعة 00:00 يبدأ يوم دوام جديد، ولا يتم ربط الخروج تلقائياً باليوم السابق. إذا كان الموظف عمل بعد منتصف الليل، يمكن للإدارة اختيار تاريخ ووقت الخروج يدوياً.</div>
+        <div style="opacity:.9">أدخل التاريخ بصيغة يوم/شهر/سنة مثل 16/05/2026.</div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>التاريخ</th>
+            <th>رقم الموظف</th>
+            <th>الاسم</th>
+            <th>الفرع</th>
+            <th>الجهاز</th>
+            <th>النوع</th>
+            <th>الإجراءات</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in missing_checkout_rows %}
+          <tr>
+            <td style="white-space:nowrap">
+              <div>{{ r.ts[:10] }}</div>
+              <div>{{ r.ts[11:19] }}</div>
+            </td>
+            <td>{{ r.employee_id }}</td>
+            <td>{{ r.emp_name or '' }}</td>
+            <td>{{ r.branch_name or '' }}</td>
+            <td>{{ r.device_name or '' }}</td>
+            <td><span class="badge">{{ r.punch_type }}</span></td>
+            <td>
+              <div class="pending-actions">
+                <form method="post" action="/attendance/pending/{{ r.id }}/approve">
+                  <input type="text" name="checkout_date" value="{{ r.ts[8:10] }}/{{ r.ts[5:7] }}/{{ r.ts[:4] }}" placeholder="DD/MM/YYYY" required style="width:118px">
+                  <input type="text" name="checkout_time" value="{{ r.ts[11:19] }}" placeholder="مثال: 17:30 أو 23:59" required style="width:132px">
+                  <button type="submit">اعتماد</button>
+                </form>
+                <form method="post" action="/attendance/pending/{{ r.id }}/reject">
+                  <button class="secondary" type="submit">رفض</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div style="opacity:.75">لا توجد ضربات خروج مفقودة.</div>
     {% endif %}
-  {% endfor %}
+  </section>
 
-  {% if ns.has_missing_checkout %}
-    <div class="card" style="margin-top:12px;line-height:1.7;border-color:#ffd36a">
-      <div style="color:#ffd36a;font-weight:700">تنبيه: توجد ضربات خروج مفقودة لموظفين لم يسجلوا خروجاً حتى الساعة 23:59.</div>
-      <div style="opacity:.9">يرجى إدخال وقت انتهاء العمل الفعلي بصيغة 24 ساعة، مثال: 17:30 أو 23:59.</div>
-      <div style="opacity:.9">بعد الساعة 00:00 يبدأ يوم دوام جديد، ولا يتم ربط الخروج تلقائياً باليوم السابق. إذا كان الموظف عمل بعد منتصف الليل، يمكن للإدارة اختيار تاريخ ووقت الخروج يدوياً.</div>
-      <div style="opacity:.9">أدخل التاريخ بصيغة يوم/شهر/سنة مثل 16/05/2026.</div>
-    </div>
+  {% if normal_pending_rows|length > 0 %}
+    <section class="card" style="margin-top:12px">
+      <h2 class="section-title">طلبات أخرى بانتظار الموافقة</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>التاريخ</th>
+            <th>رقم الموظف</th>
+            <th>الاسم</th>
+            <th>الفرع</th>
+            <th>الجهاز</th>
+            <th>النوع</th>
+            <th>الإجراءات</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in normal_pending_rows %}
+          <tr>
+            <td style="white-space:nowrap">
+              <div>{{ r.ts[:10] }}</div>
+              <div>{{ r.ts[11:19] }}</div>
+            </td>
+            <td>{{ r.employee_id }}</td>
+            <td>{{ r.emp_name or '' }}</td>
+            <td>{{ r.branch_name or '' }}</td>
+            <td>{{ r.device_name or '' }}</td>
+            <td><span class="badge">{{ r.punch_type }}</span></td>
+            <td>
+              <div class="pending-actions">
+                <form method="post" action="/attendance/pending/{{ r.id }}/approve">
+                  <button type="submit">اعتماد</button>
+                </form>
+                <form method="post" action="/attendance/pending/{{ r.id }}/reject">
+                  <button class="secondary" type="submit">رفض</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </section>
   {% endif %}
 
-  <table>
-    <thead>
-      <tr>
-        <th>Time</th>
-        <th>EmpID</th>
-        <th>Name</th>
-        <th>Branch</th>
-        <th>Device</th>
-        <th>Type</th>
-        <th style="width:220px">Actions</th>
-      </tr>
-    </thead>
-    <tbody>
-    {% for r in rows %}
-      <tr>
-        <td style="white-space:nowrap">
-          <div>التاريخ: {{ r.ts[:10] }}</div>
-          <div>الوقت: {{ r.ts[11:19] }}</div>
-        </td>
-        <td>{{ r.employee_id }}</td>
-        <td>{{ r.emp_name or '' }}</td>
-        <td>{{ r.branch_name or '' }}</td>
-        <td>{{ r.device_name or '' }}</td>
-        <td><span class="badge">{{ r.punch_type }}</span></td>
-        <td class="row" style="gap:8px">
-          <form method="post" action="/attendance/pending/{{ r.id }}/approve">
-            {% if r.source == 'missing_checkout' %}
-              <input type="text" name="checkout_date" value="{{ r.ts[8:10] }}/{{ r.ts[5:7] }}/{{ r.ts[:4] }}" placeholder="DD/MM/YYYY" required style="min-width:130px">
-              <input type="text" name="checkout_time" value="{{ r.ts[11:19] }}" placeholder="مثال: 17:30 أو 23:59" required style="min-width:140px">
-            {% endif %}
-            <button type="submit">{{ t('approve') }}</button>
-          </form>
-          <form method="post" action="/attendance/pending/{{ r.id }}/reject">
-            <button class="secondary" type="submit">{{ t('reject') }}</button>
-          </form>
-        </td>
-      </tr>
-    {% endfor %}
-    {% if rows|length == 0 %}
-      <tr><td colspan="7">No pending punches</td></tr>
+  <section class="card" style="margin-top:12px">
+    <h2 class="section-title">بحاجة تدقيق أو مراجعة</h2>
+    {% if long_session_rows|length > 0 %}
+      <div class="card pending-help">
+        توجد جلسات عمل تتجاوز 12 ساعة وتحتاج إلى تدقيق قبل اعتمادها إدارياً.
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>رقم الموظف</th>
+            <th>الاسم</th>
+            <th>الفرع/الجهاز</th>
+            <th>الدخول</th>
+            <th>الخروج</th>
+            <th>المدة</th>
+            <th>الإجراءات</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in long_session_rows %}
+          <tr>
+            <td>{{ r.employee_id }}</td>
+            <td>{{ r.emp_name or '' }}</td>
+            <td>
+              <div>{{ r.branch_name or '' }}</div>
+              <div style="opacity:.75">{{ r.device_name or '' }}</div>
+            </td>
+            <td style="white-space:nowrap">
+              <div>{{ r.in_date }}</div>
+              <div>{{ r.in_time }}</div>
+            </td>
+            <td style="white-space:nowrap">
+              <div>{{ r.out_date }}</div>
+              <div>{{ r.out_time }}</div>
+            </td>
+            <td><span class="badge">{{ r.duration_txt }}</span></td>
+            <td>
+              <div class="pending-actions">
+                <form method="post" action="/attendance/long-session/{{ r.in_id }}/{{ r.out_id }}/approve">
+                  <input class="pending-note" type="text" name="note" placeholder="ملاحظة اختيارية">
+                  <button type="submit">اعتماد</button>
+                </form>
+                <form method="post" action="/attendance/long-session/{{ r.in_id }}/{{ r.out_id }}/edit-out">
+                  <input type="text" name="checkout_date" value="{{ r.out_date_display }}" placeholder="DD/MM/YYYY" required style="width:118px">
+                  <input type="text" name="checkout_time" value="{{ r.out_time }}" placeholder="مثال: 17:30 أو 23:59" required style="width:132px">
+                  <input class="pending-note" type="text" name="note" placeholder="سبب التعديل">
+                  <button type="submit">تعديل خروج</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div style="opacity:.75">لا توجد جلسات طويلة بحاجة مراجعة.</div>
     {% endif %}
-    </tbody>
-  </table>
+  </section>
 </div>
 {% endblock %}

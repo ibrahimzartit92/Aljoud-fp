@@ -10,6 +10,7 @@ from app.audit import audit  # إذا عندك audit.py كما تستخدمه ب
 bp = Blueprint("attendance", __name__, url_prefix="/attendance")
 
 MISSING_CHECKOUT_START_DATE = "2026-05-16"
+LONG_SESSION_THRESHOLD_MINUTES = 12 * 60
 
 
 def _now_iso():
@@ -50,6 +51,188 @@ def _real_out_exists(db, employee_id: str, device_id, in_ts: str) -> bool:
         """,
         (employee_id, device_id, in_ts, day_end),
     ).fetchone() is not None
+
+
+def _fmt_duration_hhmm(total_minutes) -> str:
+    minutes = max(0, int(total_minutes or 0))
+    return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+
+def _parse_checkout_date(value: str) -> str | None:
+    if not re.match(r"^\d{2}/\d{2}/\d{4}$", value or ""):
+        return None
+    try:
+        day, month, year = value.split("/")
+        return datetime.date(int(year), int(month), int(day)).isoformat()
+    except Exception:
+        return None
+
+
+def _parse_checkout_time(value: str) -> str | None:
+    if not re.match(r"^\d{2}:\d{2}(:\d{2})?$", value or ""):
+        return None
+    checkout_time = value
+    if len(checkout_time) == 5:
+        checkout_time += ":00"
+    try:
+        hour_s, minute_s, second_s = checkout_time.split(":")
+        hour = int(hour_s)
+        minute = int(minute_s)
+        second = int(second_s)
+        if hour > 23 or minute > 59 or second > 59:
+            return None
+        datetime.time.fromisoformat(checkout_time)
+    except Exception:
+        return None
+    return checkout_time
+
+
+def _parse_attendance_ts(value: str) -> datetime.datetime | None:
+    try:
+        return datetime.datetime.fromisoformat(str(value))
+    except Exception:
+        return None
+
+
+def _ensure_long_session_review_table(db):
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS long_session_reviews (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          in_attendance_id INTEGER NOT NULL,
+          out_attendance_id INTEGER NOT NULL,
+          employee_id TEXT NOT NULL,
+          in_ts TEXT NOT NULL,
+          out_ts TEXT NOT NULL,
+          duration_min INTEGER NOT NULL,
+          decision TEXT NOT NULL,
+          reviewed_by TEXT,
+          reviewed_ts TEXT NOT NULL,
+          note TEXT,
+          UNIQUE(in_attendance_id, out_attendance_id)
+        )
+        """
+    )
+
+
+def _long_session_join_sql(where_clause: str) -> str:
+    return f"""
+        SELECT
+          a.*,
+          e.name AS emp_name,
+          d.name AS device_name,
+          b.name AS branch_name
+        FROM attendance a
+        LEFT JOIN employees e ON e.employee_id = a.employee_id
+        LEFT JOIN devices d ON d.id = a.device_id
+        LEFT JOIN branches b ON b.id = a.branch_id
+        {where_clause}
+        """
+
+
+def _build_long_session_row(in_row, out_row) -> dict | None:
+    in_dt = _parse_attendance_ts(in_row["ts"])
+    out_dt = _parse_attendance_ts(out_row["ts"])
+    if not in_dt or not out_dt or out_dt <= in_dt:
+        return None
+
+    duration_min = int((out_dt - in_dt).total_seconds() // 60)
+    return {
+        "in_id": in_row["id"],
+        "out_id": out_row["id"],
+        "employee_id": in_row["employee_id"],
+        "emp_name": in_row["emp_name"] or out_row["emp_name"] or "",
+        "branch_name": in_row["branch_name"] or out_row["branch_name"] or "",
+        "device_name": in_row["device_name"] or out_row["device_name"] or "",
+        "in_ts": in_row["ts"],
+        "out_ts": out_row["ts"],
+        "in_date": str(in_row["ts"])[:10],
+        "in_time": str(in_row["ts"])[11:19],
+        "out_date": str(out_row["ts"])[:10],
+        "out_date_display": f"{str(out_row['ts'])[8:10]}/{str(out_row['ts'])[5:7]}/{str(out_row['ts'])[:4]}",
+        "out_time": str(out_row["ts"])[11:19],
+        "duration_min": duration_min,
+        "duration_txt": _fmt_duration_hhmm(duration_min),
+    }
+
+
+def _fetch_long_session_pair(db, in_id: int, out_id: int) -> dict | None:
+    in_row = db.execute(
+        _long_session_join_sql("WHERE a.id=? AND a.punch_type='in'"),
+        (in_id,),
+    ).fetchone()
+    out_row = db.execute(
+        _long_session_join_sql("WHERE a.id=? AND a.punch_type='out'"),
+        (out_id,),
+    ).fetchone()
+    if not in_row or not out_row or in_row["employee_id"] != out_row["employee_id"]:
+        return None
+    return _build_long_session_row(in_row, out_row)
+
+
+def _insert_long_session_review(db, pair: dict, decision: str, reviewed_by: str, reviewed_ts: str, note: str):
+    db.execute(
+        """
+        INSERT OR IGNORE INTO long_session_reviews(
+          in_attendance_id, out_attendance_id, employee_id, in_ts, out_ts,
+          duration_min, decision, reviewed_by, reviewed_ts, note
+        )
+        VALUES (?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            pair["in_id"],
+            pair["out_id"],
+            pair["employee_id"],
+            pair["in_ts"],
+            pair["out_ts"],
+            pair["duration_min"],
+            decision,
+            reviewed_by,
+            reviewed_ts,
+            note,
+        ),
+    )
+
+
+def _fetch_long_session_rows(db) -> list[dict]:
+    _ensure_long_session_review_table(db)
+    rows = db.execute(
+        _long_session_join_sql(
+            """
+            WHERE a.punch_type IN ('in', 'out')
+            ORDER BY a.employee_id ASC, a.ts ASC, a.id ASC
+            """
+        )
+    ).fetchall()
+
+    open_in_by_employee = {}
+    long_rows = []
+    for row in rows:
+        employee_id = row["employee_id"]
+        punch_type = row["punch_type"]
+        if punch_type == "in":
+            if employee_id not in open_in_by_employee:
+                open_in_by_employee[employee_id] = row
+            continue
+        if punch_type != "out" or employee_id not in open_in_by_employee:
+            continue
+
+        in_row = open_in_by_employee.pop(employee_id)
+        pair = _build_long_session_row(in_row, row)
+        if not pair or pair["duration_min"] <= LONG_SESSION_THRESHOLD_MINUTES:
+            continue
+        reviewed = db.execute(
+            """
+            SELECT 1 FROM long_session_reviews
+            WHERE in_attendance_id=? AND out_attendance_id=?
+            LIMIT 1
+            """,
+            (pair["in_id"], pair["out_id"]),
+        ).fetchone()
+        if not reviewed:
+            long_rows.append(pair)
+
+    return long_rows
 
 
 def _ensure_missing_checkout_proposals(db):
@@ -144,7 +327,16 @@ def pending():
         ORDER BY p.ts DESC, p.id DESC
         """
     ).fetchall()
-    return render_template("attendance/pending.html", rows=rows)
+    missing_checkout_rows = [r for r in rows if r["source"] == "missing_checkout"]
+    normal_pending_rows = [r for r in rows if r["source"] != "missing_checkout"]
+    long_session_rows = _fetch_long_session_rows(db)
+    return render_template(
+        "attendance/pending.html",
+        rows=rows,
+        missing_checkout_rows=missing_checkout_rows,
+        normal_pending_rows=normal_pending_rows,
+        long_session_rows=long_session_rows,
+    )
 
 
 @bp.post("/pending/<int:pid>/approve")
@@ -288,6 +480,116 @@ def pending_reject(pid: int):
         pass
 
     flash("Rejected (deleted)", "ok")
+    return redirect(url_for("attendance.pending"))
+
+
+@bp.post("/long-session/<int:in_id>/<int:out_id>/approve")
+@login_required
+@require_perm("attendance.manage")
+def long_session_approve(in_id: int, out_id: int):
+    db = get_db()
+    _ensure_long_session_review_table(db)
+    pair = _fetch_long_session_pair(db, in_id, out_id)
+    if not pair:
+        flash("لم يتم العثور على جلسة العمل الطويلة.", "error")
+        return redirect(url_for("attendance.pending"))
+
+    reviewer = _current_user()
+    now = _now_iso()
+    note = (request.form.get("note") or "").strip()
+    _insert_long_session_review(db, pair, "approved", reviewer, now, note)
+    db.commit()
+
+    try:
+        audit(
+            "attendance.long_session.approve",
+            {"in_id": in_id, "out_id": out_id, "by": reviewer, "duration_min": pair["duration_min"], "note": note},
+        )
+    except Exception:
+        pass
+
+    flash("تم اعتماد جلسة العمل الطويلة.", "ok")
+    return redirect(url_for("attendance.pending"))
+
+
+@bp.post("/long-session/<int:in_id>/<int:out_id>/edit-out")
+@login_required
+@require_perm("attendance.manage")
+def long_session_edit_out(in_id: int, out_id: int):
+    db = get_db()
+    _ensure_long_session_review_table(db)
+    pair = _fetch_long_session_pair(db, in_id, out_id)
+    if not pair:
+        flash("لم يتم العثور على جلسة العمل الطويلة.", "error")
+        return redirect(url_for("attendance.pending"))
+
+    checkout_date = (request.form.get("checkout_date") or "").strip()
+    checkout_time = (request.form.get("checkout_time") or "").strip()
+    note = (request.form.get("note") or "").strip()
+    checkout_date_iso = _parse_checkout_date(checkout_date)
+    if not checkout_date_iso:
+        flash("تاريخ الخروج يجب أن يكون بصيغة يوم/شهر/سنة مثل 16/05/2026.", "error")
+        return redirect(url_for("attendance.pending"))
+    checkout_time_iso = _parse_checkout_time(checkout_time)
+    if not checkout_time_iso:
+        flash("وقت الخروج يجب أن يكون بصيغة 24 ساعة صحيحة بين 00:00 و 23:59.", "error")
+        return redirect(url_for("attendance.pending"))
+
+    checkout_ts = f"{checkout_date_iso}T{checkout_time_iso}"
+    in_dt = _parse_attendance_ts(pair["in_ts"])
+    out_dt = _parse_attendance_ts(checkout_ts)
+    if not in_dt or not out_dt or out_dt <= in_dt:
+        flash("وقت الخروج يجب أن يكون بعد وقت الدخول.", "error")
+        return redirect(url_for("attendance.pending"))
+
+    out_row = db.execute("SELECT * FROM attendance WHERE id=?", (out_id,)).fetchone()
+    if not out_row:
+        flash("لم يتم العثور على ضربة الخروج.", "error")
+        return redirect(url_for("attendance.pending"))
+
+    editor = _current_user()
+    now = _now_iso()
+    attendance_cols = _table_cols(db, "attendance")
+    set_parts = ["ts=?"]
+    vals = [checkout_ts]
+    if "edited_by" in attendance_cols:
+        set_parts.append("edited_by=?")
+        vals.append(editor)
+    if "edited_ts" in attendance_cols:
+        set_parts.append("edited_ts=?")
+        vals.append(now)
+    if "original_ts" in attendance_cols:
+        original_ts = out_row["original_ts"] if "original_ts" in out_row.keys() else None
+        set_parts.append("original_ts=?")
+        vals.append(original_ts or out_row["ts"])
+    if "edit_note" in attendance_cols:
+        set_parts.append("edit_note=?")
+        vals.append(note)
+    vals.append(out_id)
+    db.execute(f"UPDATE attendance SET {', '.join(set_parts)} WHERE id=?", vals)
+
+    duration_min = int((out_dt - in_dt).total_seconds() // 60)
+    if duration_min > LONG_SESSION_THRESHOLD_MINUTES:
+        reviewed_pair = dict(pair)
+        reviewed_pair["out_ts"] = checkout_ts
+        reviewed_pair["out_date"] = checkout_ts[:10]
+        reviewed_pair["out_date_display"] = f"{checkout_ts[8:10]}/{checkout_ts[5:7]}/{checkout_ts[:4]}"
+        reviewed_pair["out_time"] = checkout_ts[11:19]
+        reviewed_pair["duration_min"] = duration_min
+        reviewed_pair["duration_txt"] = _fmt_duration_hhmm(duration_min)
+        _insert_long_session_review(db, reviewed_pair, "corrected_reviewed", editor, now, note)
+
+    db.commit()
+
+    try:
+        audit(
+            "attendance.long_session.edit_out",
+            {"in_id": in_id, "out_id": out_id, "by": editor, "from": pair["out_ts"], "to": checkout_ts, "note": note},
+        )
+    except Exception:
+        pass
+
+    flash("تم تعديل وقت الخروج.", "ok")
     return redirect(url_for("attendance.pending"))
 
 
