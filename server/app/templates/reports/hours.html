@@ -1,25 +1,27 @@
 {% extends "_base.html" %}
 {% block content %}
 <div class="card">
-  <h1 class="h1">{{ t('reports') if t('reports')!='reports' else 'Reports' }}</h1>
+  <h1 class="h1">التقارير</h1>
 
   <div class="card" style="margin-top:12px">
-    <form method="get" action="{{ url_for('reports.hours') }}">
+    <form method="get" action="{{ url_for('reports.hours') }}" id="hoursFiltersForm">
       <div class="row" style="gap:10px; align-items:end; flex-wrap:wrap;">
         <div style="min-width:180px">
-          <label style="display:block;opacity:.8;margin-bottom:6px">From</label>
-          <input type="date" name="date_from" value="{{ date_from }}" required>
+          <label style="display:block;opacity:.8;margin-bottom:6px">من تاريخ</label>
+          <input type="hidden" name="date_from" value="{{ date_from }}">
+          <input type="text" name="date_from_display" value="{{ date_from[8:10] }}/{{ date_from[5:7] }}/{{ date_from[:4] }}" placeholder="DD/MM/YYYY" required>
         </div>
 
         <div style="min-width:180px">
-          <label style="display:block;opacity:.8;margin-bottom:6px">To</label>
-          <input type="date" name="date_to" value="{{ date_to }}" required>
+          <label style="display:block;opacity:.8;margin-bottom:6px">إلى تاريخ</label>
+          <input type="hidden" name="date_to" value="{{ date_to }}">
+          <input type="text" name="date_to_display" value="{{ date_to[8:10] }}/{{ date_to[5:7] }}/{{ date_to[:4] }}" placeholder="DD/MM/YYYY" required>
         </div>
 
         <div style="min-width:220px">
-          <label style="display:block;opacity:.8;margin-bottom:6px">Branch</label>
+          <label style="display:block;opacity:.8;margin-bottom:6px">الفرع</label>
           <select name="branch_id">
-            <option value="" {% if not branch_id %}selected{% endif %}>All branches</option>
+            <option value="" {% if not branch_id %}selected{% endif %}>كل الفروع</option>
             {% for b in branches %}
               <option value="{{ b.id }}" {% if branch_id and branch_id|int == b.id %}selected{% endif %}>
                 {{ b.name }}
@@ -29,9 +31,9 @@
         </div>
 
         <div style="min-width:260px">
-          <label style="display:block;opacity:.8;margin-bottom:6px">Employee</label>
+          <label style="display:block;opacity:.8;margin-bottom:6px">الموظف</label>
           <select name="employee_id">
-            <option value="" {% if not employee_id %}selected{% endif %}>All employees</option>
+            <option value="" {% if not employee_id %}selected{% endif %}>كل الموظفين</option>
             {% for e in employees %}
               <option value="{{ e.employee_id }}" {% if employee_id == e.employee_id %}selected{% endif %}>
                 {{ e.employee_id }} - {{ e.name }}
@@ -43,9 +45,9 @@
         <div style="min-width:200px">
           <label style="display:block;opacity:.8;margin-bottom:6px">الاستراحة</label>
           <select name="break_policy" id="break_policy">
-            <option value="none" {% if break_policy=='none' %}selected{% endif %}>No break</option>
-            <option value="manual" {% if break_policy=='manual' %}selected{% endif %}>Manual (minutes)</option>
-            <option value="auto" {% if break_policy=='auto' %}selected{% endif %}>Auto (6h=30m, 9h=60m)</option>
+            <option value="none" {% if break_policy=='none' %}selected{% endif %}>بدون استراحة</option>
+            <option value="manual" {% if break_policy=='manual' %}selected{% endif %}>يدوي (الدقائق)</option>
+            <option value="auto" {% if break_policy=='auto' %}selected{% endif %}>تلقائي (6 ساعات = 30 دقيقة، 9 ساعات = 60 دقيقة)</option>
           </select>
         </div>
 
@@ -54,35 +56,31 @@
           <input type="number" name="break_minutes" min="0" max="600" value="{{ break_minutes or 0 }}">
         </div>
 
-        <div>
-          <button type="submit">Filter</button>
-        </div>
-
         <div style="margin-left:auto; display:flex; gap:12px; align-items:center;">
-          <a href="{{ url_for('reports.hours_xlsx', **request.args) }}" class="btn secondary">Export Excel</a>
-          <a href="{{ url_for('reports.hours_pdf', **request.args) }}" class="btn secondary">Export PDF</a>
+          <a href="{{ url_for('reports.hours_xlsx', **request.args) }}" class="btn secondary" data-export-link>تصدير Excel</a>
+          <a href="{{ url_for('reports.hours_pdf', **request.args) }}" class="btn secondary" data-export-link>تصدير PDF</a>
         </div>
       </div>
     </form>
 
     <div style="opacity:.8;margin-top:10px">
-      In بدون Out = 0 ساعات + حالة <b>Incomplete</b>.
+      الدخول بدون خروج = 00:00 وحالة <b>غير مكتمل</b>.
       يتم عرض الوقت بصيغة HH:MM بدون تقريب.
     </div>
   </div>
 
   <div class="card" style="margin-top:12px">
-    <h2 class="h2">Summary</h2>
+    <h2 class="h2">الملخص</h2>
 
     <div style="display:flex; gap:16px; flex-wrap:wrap;">
       <div class="card" style="flex:1; min-width:360px;">
-        <h3 class="h2" style="font-size:16px;">Daily totals</h3>
+        <h3 class="h2" style="font-size:16px;">الإجماليات اليومية</h3>
         <table>
           <thead>
             <tr>
-              <th>EmpID</th>
-              <th>Name</th>
-              <th>Date</th>
+              <th>رقم الموظف</th>
+              <th>الاسم</th>
+              <th>التاريخ</th>
               <th>صافي الوقت</th>
             </tr>
           </thead>
@@ -96,19 +94,19 @@
             </tr>
             {% endfor %}
             {% if daily_rows|length == 0 %}
-              <tr><td colspan="4">No data</td></tr>
+              <tr><td colspan="4">لا توجد بيانات</td></tr>
             {% endif %}
           </tbody>
         </table>
       </div>
 
       <div class="card" style="flex:1; min-width:360px;">
-        <h3 class="h2" style="font-size:16px;">Totals</h3>
+        <h3 class="h2" style="font-size:16px;">الإجماليات</h3>
         <table>
           <thead>
             <tr>
-              <th>EmpID</th>
-              <th>Name</th>
+              <th>رقم الموظف</th>
+              <th>الاسم</th>
               <th>إجمالي صافي الوقت</th>
             </tr>
           </thead>
@@ -121,35 +119,35 @@
             </tr>
             {% endfor %}
             {% if total_rows|length == 0 %}
-              <tr><td colspan="3">No data</td></tr>
+              <tr><td colspan="3">لا توجد بيانات</td></tr>
             {% endif %}
           </tbody>
         </table>
 
         <div style="margin-top:10px; opacity:.9">
-          <b>Grand total:</b> {{ grand.net_time_txt if grand else '00:00' }}
+          <b>الإجمالي العام:</b> {{ grand.net_time_txt if grand else '00:00' }}
         </div>
       </div>
     </div>
   </div>
 
   <div class="card" style="margin-top:12px">
-    <h2 class="h2">Details (IN → OUT)</h2>
+    <h2 class="h2">تفاصيل الجلسات</h2>
     <table>
       <thead>
         <tr>
-          <th>EmpID</th>
-          <th>Name</th>
-          <th>In date</th>
-          <th>In time</th>
-          <th>In branch</th>
-          <th>Out date</th>
-          <th>Out time</th>
-          <th>Out branch</th>
+          <th>رقم الموظف</th>
+          <th>الاسم</th>
+          <th>تاريخ الدخول</th>
+          <th>وقت الدخول</th>
+          <th>فرع الدخول</th>
+          <th>تاريخ الخروج</th>
+          <th>وقت الخروج</th>
+          <th>فرع الخروج</th>
           <th>إجمالي الوقت</th>
           <th>الاستراحة</th>
           <th>صافي الوقت</th>
-          <th>Status</th>
+          <th>الحالة</th>
         </tr>
       </thead>
       <tbody>
@@ -168,15 +166,15 @@
           <td>{{ r.net_time_txt }}</td>
           <td>
             {% if r.status == 'Incomplete' %}
-              <span class="badge" style="opacity:.9">Incomplete</span>
+              <span class="badge" style="opacity:.9">غير مكتمل</span>
             {% else %}
-              <span class="badge">OK</span>
+              <span class="badge">مكتمل</span>
             {% endif %}
           </td>
         </tr>
         {% endfor %}
         {% if rows|length == 0 %}
-          <tr><td colspan="12">No data</td></tr>
+          <tr><td colspan="12">لا توجد بيانات</td></tr>
         {% endif %}
       </tbody>
     </table>
@@ -185,6 +183,41 @@
 
 <script>
 (function(){
+  const invalidDateMessage = 'أدخل التاريخ بصيغة يوم/شهر/سنة مثل 16/05/2026';
+
+  function ddmmyyyyToIso(value){
+    const match = String(value || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if(!match) return null;
+    const day = Number(match[1]);
+    const month = Number(match[2]);
+    const year = Number(match[3]);
+    const date = new Date(year, month - 1, day);
+    if(date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+    return match[3] + '-' + match[2] + '-' + match[1];
+  }
+
+  function syncDateFields(form, showAlert){
+    const fromDisplay = form.elements['date_from_display'];
+    const toDisplay = form.elements['date_to_display'];
+    const fromHidden = form.elements['date_from'];
+    const toHidden = form.elements['date_to'];
+    const fromIso = ddmmyyyyToIso(fromDisplay ? fromDisplay.value : '');
+    const toIso = ddmmyyyyToIso(toDisplay ? toDisplay.value : '');
+    if(!fromIso || !toIso){
+      if(showAlert) alert(invalidDateMessage);
+      return false;
+    }
+    fromHidden.value = fromIso;
+    toHidden.value = toIso;
+    return true;
+  }
+
+  function submitFilters(){
+    const form = document.getElementById('hoursFiltersForm');
+    if(!form || !syncDateFields(form, true)) return;
+    form.submit();
+  }
+
   function toggleBreakMinutes(){
     const pol = document.getElementById('break_policy');
     const wrap = document.getElementById('break_minutes_wrap');
@@ -192,7 +225,58 @@
     wrap.style.display = (pol.value === 'manual') ? 'block' : 'none';
   }
   document.addEventListener('DOMContentLoaded', function(){
+    const form = document.getElementById('hoursFiltersForm');
     const pol = document.getElementById('break_policy');
+    let breakTimer = null;
+
+    if(form){
+      form.querySelectorAll("select[name='branch_id'], select[name='employee_id'], select[name='break_policy']").forEach(function(el){
+        el.addEventListener('change', function(){
+          toggleBreakMinutes();
+          submitFilters();
+        });
+      });
+
+      form.querySelectorAll("input[name='date_from_display'], input[name='date_to_display']").forEach(function(el){
+        el.addEventListener('change', submitFilters);
+        el.addEventListener('blur', function(){
+          if(el.value.trim()) syncDateFields(form, false);
+        });
+      });
+
+      const breakMinutes = form.elements['break_minutes'];
+      if(breakMinutes){
+        breakMinutes.addEventListener('input', function(){
+          clearTimeout(breakTimer);
+          breakTimer = setTimeout(submitFilters, 700);
+        });
+        breakMinutes.addEventListener('change', submitFilters);
+      }
+
+      form.addEventListener('submit', function(e){
+        if(!syncDateFields(form, true)) e.preventDefault();
+      });
+
+      document.querySelectorAll('[data-export-link]').forEach(function(link){
+        link.addEventListener('click', function(e){
+          if(!syncDateFields(form, true)){
+            e.preventDefault();
+            return;
+          }
+          const url = new URL(link.href, window.location.origin);
+          new FormData(form).forEach(function(value, key){
+            if(key === 'date_from_display' || key === 'date_to_display') return;
+            if(value === '') {
+              url.searchParams.delete(key);
+            } else {
+              url.searchParams.set(key, value);
+            }
+          });
+          link.href = url.toString();
+        });
+      });
+    }
+
     if(pol) pol.addEventListener('change', toggleBreakMinutes);
     toggleBreakMinutes();
   });
