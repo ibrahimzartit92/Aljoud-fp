@@ -45,7 +45,7 @@
 </style>
 
 <div class="card">
-  <h1 class="h1">{{ t('employees') }}</h1>
+  <h1 class="h1">الموظفون</h1>
 
   <div class="emp-toolbar">
     <div style="opacity:.85">إدارة الموظفين + الأدوار + مزامنة مع أجهزة الـ Agent</div>
@@ -57,41 +57,41 @@
     <form method="post" action="{{ url_for('admin.employees_sync') }}" id="syncEmployeesForm">
       <input type="hidden" name="agent_sync_path" value="/sync/employees">
       <input type="hidden" name="agent_port" value="8002">
-      <button type="submit">Sync with devices</button>
+      <button type="submit">مزامنة مع الأجهزة</button>
     </form>
   </div>
 
   <div class="sync-hint" style="margin-top:8px">
-    ملاحظة: المزامنة تستهدف Agent endpoint: <code>POST :8002/sync/employees</code>
+    ملاحظة: المزامنة تستهدف نقطة اتصال الأيجنت: <code>POST :8002/sync/employees</code>
   </div>
 
   <div class="card" style="margin-top:12px">
-    <h2 class="h2">Add employee</h2>
+    <h2 class="h2">إضافة موظف</h2>
 
     <form method="post" action="{{ url_for('admin.employees_create') }}">
       <div class="emp-form-grid">
-        <input class="w-sm" name="employee_id" placeholder="Employee ID" required>
-        <input class="w-lg" name="name" placeholder="Full name" required>
-        <input class="w-md" name="username" placeholder="Username" required>
-        <input class="w-md" name="card_rfid" placeholder="RFID">
-        <input class="w-md" name="password" placeholder="Password (6 digits)">
-        <input class="w-md" name="s30_password" placeholder="S30 PW (6 digits)">
+        <input class="w-sm" name="employee_id" placeholder="رقم الموظف" required>
+        <input class="w-lg" name="name" placeholder="الاسم الكامل" required>
+        <input class="w-md" name="username" placeholder="اسم المستخدم" required>
+        <input class="w-md" name="card_rfid" placeholder="رقم البطاقة">
+        <input class="w-md" name="password" placeholder="كلمة المرور - 6 أرقام">
+        <input class="w-md" name="s30_password" placeholder="كلمة مرور جهاز البصمة - 6 أرقام">
 
         <div class="roles-inline">
-          <div style="opacity:.85;min-width:60px">Roles</div>
+          <div style="opacity:.85;min-width:60px">الأدوار</div>
           <div class="roles-box">
             <div class="roles-grid">
               {% for r in roles %}
                 <label class="role-item">
                   <input type="checkbox" name="role_ids" value="{{ r.id }}">
-                  <span>{{ r.name }}</span>
+                  <span>{% if r.name == 'manager' %}مدير{% elif r.name == 'cashier' %}كاشير{% elif r.name == 'superadmin' %}مدير النظام{% else %}{{ r.name }}{% endif %}</span>
                 </label>
               {% endfor %}
             </div>
           </div>
         </div>
 
-        <button type="submit">{{ t('add') }}</button>
+        <button type="submit">إضافة</button>
       </div>
 
       <div class="emp-note">
@@ -101,19 +101,19 @@
   </div>
 
   <div class="card" style="margin-top:12px; overflow:auto">
-    <h2 class="h2">Employees</h2>
+    <h2 class="h2">الموظفون</h2>
 
     <table class="emp-table">
       <thead>
         <tr>
-          <th class="cell-sm">EmpID</th>
-          <th class="cell-lg">Name</th>
-          <th class="cell-md">User</th>
-          <th class="cell-md">RFID</th>
-          <th class="cell-sm">S30 PW</th>
-          <th class="cell-sm">Active</th>
-          <th class="cell-lg">Roles</th>
-          <th class="cell-lg">Actions</th>
+          <th class="cell-sm">رقم الموظف</th>
+          <th class="cell-lg">الاسم</th>
+          <th class="cell-md">اسم المستخدم</th>
+          <th class="cell-md">رقم البطاقة</th>
+          <th class="cell-sm">كلمة مرور البصمة</th>
+          <th class="cell-sm">نشط</th>
+          <th class="cell-lg">الأدوار</th>
+          <th class="cell-lg">الإجراءات</th>
         </tr>
       </thead>
 
@@ -128,12 +128,12 @@
           <td><input class="cell-lg" name="name" value="{{ e.name }}"></td>
           <td><input class="cell-md" name="username" value="{{ e.username }}"></td>
           <td><input class="cell-md" name="card_rfid" value="{{ e.card_rfid or '' }}"></td>
-          <td><input class="cell-sm" name="s30_password" value="{{ e.s30_password or '' }}" placeholder="6 digits"></td>
+          <td><input class="cell-sm" name="s30_password" value="{{ e.s30_password or '' }}" placeholder="6 أرقام"></td>
 
           <td>
             <select name="is_active" class="cell-sm">
-              <option value="1" {% if e.is_active %}selected{% endif %}>Yes</option>
-              <option value="0" {% if not e.is_active %}selected{% endif %}>No</option>
+              <option value="1" {% if e.is_active %}selected{% endif %}>نعم</option>
+              <option value="0" {% if not e.is_active %}selected{% endif %}>لا</option>
             </select>
           </td>
 
@@ -144,7 +144,7 @@
                   <label class="role-item">
                     <input type="checkbox" name="role_ids" value="{{ r.id }}"
                       {% if e.roles and (r.name in e.roles) %}checked{% endif %}>
-                    <span>{{ r.name }}</span>
+                    <span>{% if r.name == 'manager' %}مدير{% elif r.name == 'cashier' %}كاشير{% elif r.name == 'superadmin' %}مدير النظام{% else %}{{ r.name }}{% endif %}</span>
                   </label>
                 {% endfor %}
               </div>
@@ -152,20 +152,20 @@
           </td>
 
           <td class="actions">
-              <input name="password" placeholder="new 6-digit pw" style="width:160px;min-width:160px">
-              <button type="submit">Save</button>
+              <input name="password" placeholder="كلمة مرور جديدة - 6 أرقام" style="width:160px;min-width:160px">
+              <button type="submit">حفظ</button>
             </form>
 
             <form method="post" action="{{ url_for('admin.employees_delete', emp_row_id=e.id) }}"
-                  onsubmit="return confirm('Delete employee {{ e.username }} ?');">
-              <button class="secondary" type="submit">Delete</button>
+                  onsubmit="return confirm('هل تريد حذف الموظف {{ e.username }}؟');">
+              <button class="secondary" type="submit">حذف</button>
             </form>
           </td>
         </tr>
         {% endfor %}
 
         {% if employees|length == 0 %}
-          <tr><td colspan="8">No employees</td></tr>
+          <tr><td colspan="8">لا يوجد موظفون</td></tr>
         {% endif %}
       </tbody>
     </table>
