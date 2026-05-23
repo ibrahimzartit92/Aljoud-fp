@@ -10,15 +10,25 @@
   .pending-actions form { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 0; }
   .pending-help { margin: 10px 0; line-height: 1.6; border-color: #ffd36a; }
   .pending-note { min-width: 130px; max-width: 180px; }
+  .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .filter-bar select,
+  .filter-bar input { min-width: 190px; }
 </style>
 
-<div class="card pending-compact">
+<div class="card pending-compact" data-smart-filter>
   <div class="row" style="justify-content:space-between; align-items:center;">
     <h1 class="h1">{{ t('pending') }}</h1>
     <div style="opacity:.8">الضربات بانتظار موافقة المسؤول</div>
   </div>
 
-  <section class="card" style="margin-top:12px">
+  <div class="filter-bar">
+    <select data-filter-branch>
+      <option value="">كل الفروع</option>
+    </select>
+    <input type="text" data-filter-employee placeholder="ابحث باسم أو رقم الموظف" autocomplete="off">
+  </div>
+
+  <section class="card" style="margin-top:12px" data-filter-section>
     <h2 class="section-title">الموظفون الذين نسوا تسجيل الخروج</h2>
     {% if missing_checkout_rows|length > 0 %}
       <div class="card pending-help">
@@ -41,7 +51,7 @@
         </thead>
         <tbody>
         {% for r in missing_checkout_rows %}
-          <tr>
+          <tr data-filter-row data-employee="{{ r.employee_id }} {{ r.emp_name or '' }}" data-branch="{{ r.branch_name or '' }}">
             <td style="white-space:nowrap">
               <div>{{ r.ts[:10] }}</div>
               <div>{{ r.ts[11:19] }}</div>
@@ -67,13 +77,14 @@
         {% endfor %}
         </tbody>
       </table>
+      <div data-empty-message style="display:none;opacity:.75;margin-top:8px">لا توجد نتائج مطابقة للفلتر</div>
     {% else %}
       <div style="opacity:.75">لا توجد ضربات خروج مفقودة.</div>
     {% endif %}
   </section>
 
   {% if normal_pending_rows|length > 0 %}
-    <section class="card" style="margin-top:12px">
+    <section class="card" style="margin-top:12px" data-filter-section>
       <h2 class="section-title">طلبات أخرى بانتظار الموافقة</h2>
       <table>
         <thead>
@@ -89,7 +100,7 @@
         </thead>
         <tbody>
         {% for r in normal_pending_rows %}
-          <tr>
+          <tr data-filter-row data-employee="{{ r.employee_id }} {{ r.emp_name or '' }}" data-branch="{{ r.branch_name or '' }}">
             <td style="white-space:nowrap">
               <div>{{ r.ts[:10] }}</div>
               <div>{{ r.ts[11:19] }}</div>
@@ -113,10 +124,11 @@
         {% endfor %}
         </tbody>
       </table>
+      <div data-empty-message style="display:none;opacity:.75;margin-top:8px">لا توجد نتائج مطابقة للفلتر</div>
     </section>
   {% endif %}
 
-  <section class="card" style="margin-top:12px">
+  <section class="card" style="margin-top:12px" data-filter-section>
     <h2 class="section-title">بحاجة تدقيق أو مراجعة</h2>
     {% if long_session_rows|length > 0 %}
       <div class="card pending-help">
@@ -136,7 +148,7 @@
         </thead>
         <tbody>
         {% for r in long_session_rows %}
-          <tr>
+          <tr data-filter-row data-employee="{{ r.employee_id }} {{ r.emp_name or '' }}" data-branch="{{ r.branch_name or '' }}">
             <td>{{ r.employee_id }}</td>
             <td>{{ r.emp_name or '' }}</td>
             <td>
@@ -170,9 +182,55 @@
         {% endfor %}
         </tbody>
       </table>
+      <div data-empty-message style="display:none;opacity:.75;margin-top:8px">لا توجد نتائج مطابقة للفلتر</div>
     {% else %}
       <div style="opacity:.75">لا توجد جلسات طويلة بحاجة مراجعة.</div>
     {% endif %}
   </section>
 </div>
+<script>
+  (() => {
+    const root = document.querySelector("[data-smart-filter]");
+    if (!root) return;
+
+    const branchSelect = root.querySelector("[data-filter-branch]");
+    const employeeInput = root.querySelector("[data-filter-employee]");
+    const rows = Array.from(root.querySelectorAll("[data-filter-row]"));
+    const normalize = (value) => (value || "").toString().trim().toLowerCase();
+    const branches = Array.from(new Set(rows.map((row) => (row.dataset.branch || "").trim()).filter(Boolean))).sort();
+
+    branches.forEach((branch) => {
+      const option = document.createElement("option");
+      option.value = branch;
+      option.textContent = branch;
+      branchSelect.appendChild(option);
+    });
+
+    const applyFilters = () => {
+      const branch = normalize(branchSelect.value);
+      const employee = normalize(employeeInput.value);
+
+      rows.forEach((row) => {
+        const rowBranch = normalize(row.dataset.branch);
+        const rowEmployee = normalize(row.dataset.employee);
+        const branchMatch = !branch || rowBranch === branch;
+        const employeeMatch = !employee || rowEmployee.includes(employee);
+        row.style.display = branchMatch && employeeMatch ? "" : "none";
+      });
+
+      root.querySelectorAll("[data-filter-section]").forEach((section) => {
+        const sectionRows = Array.from(section.querySelectorAll("[data-filter-row]"));
+        const visibleCount = sectionRows.filter((row) => row.style.display !== "none").length;
+        const emptyMessage = section.querySelector("[data-empty-message]");
+        if (emptyMessage) {
+          emptyMessage.style.display = sectionRows.length && visibleCount === 0 ? "" : "none";
+        }
+      });
+    };
+
+    branchSelect.addEventListener("change", applyFilters);
+    employeeInput.addEventListener("input", applyFilters);
+    applyFilters();
+  })();
+</script>
 {% endblock %}

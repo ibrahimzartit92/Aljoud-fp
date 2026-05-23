@@ -1,12 +1,25 @@
 {% extends "_base.html" %}
 {% block content %}
-<div class="card">
+<style>
+  .attendance-filter-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+  .attendance-filter-bar select,
+  .attendance-filter-bar input { min-width: 190px; }
+</style>
+
+<div class="card" data-smart-filter>
   <div class="row" style="justify-content:space-between; align-items:center;">
     <h1 class="h1">الحضور والانصراف</h1>
     <div style="opacity:.8">الضربات المعتمدة - وقت قابل للتعديل</div>
   </div>
 
-  <table>
+  <div class="attendance-filter-bar">
+    <select data-filter-branch>
+      <option value="">كل الفروع</option>
+    </select>
+    <input type="text" data-filter-employee placeholder="ابحث باسم أو رقم الموظف" autocomplete="off">
+  </div>
+
+  <table data-filter-section style="margin-top:12px">
     <thead>
       <tr>
         <th>التاريخ</th>
@@ -23,7 +36,7 @@
     </thead>
     <tbody>
       {% for r in rows %}
-      <tr>
+      <tr data-filter-row data-employee="{{ r.employee_id }} {{ r.emp_name or '' }}" data-branch="{{ r.branch_name or '' }}">
         <td style="white-space:nowrap">{{ r.ts[:10] }}</td>
         <td style="white-space:nowrap">{{ r.ts[11:19] }}</td>
         <td>{{ r.employee_id }}</td>
@@ -56,10 +69,58 @@
         </td>
       </tr>
       {% endfor %}
+      <tr data-empty-message style="display:none">
+        <td colspan="10">لا توجد نتائج مطابقة للفلتر</td>
+      </tr>
       {% if rows|length==0 %}
         <tr><td colspan="10">لا توجد سجلات حضور</td></tr>
       {% endif %}
     </tbody>
   </table>
 </div>
+<script>
+  (() => {
+    const root = document.querySelector("[data-smart-filter]");
+    if (!root) return;
+
+    const branchSelect = root.querySelector("[data-filter-branch]");
+    const employeeInput = root.querySelector("[data-filter-employee]");
+    const rows = Array.from(root.querySelectorAll("[data-filter-row]"));
+    const normalize = (value) => (value || "").toString().trim().toLowerCase();
+    const branches = Array.from(new Set(rows.map((row) => (row.dataset.branch || "").trim()).filter(Boolean))).sort();
+
+    branches.forEach((branch) => {
+      const option = document.createElement("option");
+      option.value = branch;
+      option.textContent = branch;
+      branchSelect.appendChild(option);
+    });
+
+    const applyFilters = () => {
+      const branch = normalize(branchSelect.value);
+      const employee = normalize(employeeInput.value);
+
+      rows.forEach((row) => {
+        const rowBranch = normalize(row.dataset.branch);
+        const rowEmployee = normalize(row.dataset.employee);
+        const branchMatch = !branch || rowBranch === branch;
+        const employeeMatch = !employee || rowEmployee.includes(employee);
+        row.style.display = branchMatch && employeeMatch ? "" : "none";
+      });
+
+      root.querySelectorAll("[data-filter-section]").forEach((section) => {
+        const sectionRows = Array.from(section.querySelectorAll("[data-filter-row]"));
+        const visibleCount = sectionRows.filter((row) => row.style.display !== "none").length;
+        const emptyMessage = section.querySelector("[data-empty-message]");
+        if (emptyMessage) {
+          emptyMessage.style.display = sectionRows.length && visibleCount === 0 ? "" : "none";
+        }
+      });
+    };
+
+    branchSelect.addEventListener("change", applyFilters);
+    employeeInput.addEventListener("input", applyFilters);
+    applyFilters();
+  })();
+</script>
 {% endblock %}
