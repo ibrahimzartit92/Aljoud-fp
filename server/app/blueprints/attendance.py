@@ -11,6 +11,7 @@ bp = Blueprint("attendance", __name__, url_prefix="/attendance")
 
 MISSING_CHECKOUT_START_DATE = "2026-05-16"
 LONG_SESSION_THRESHOLD_MINUTES = 12 * 60
+NIGHT_SHIFT_START = datetime.time(20, 0)
 
 
 def _now_iso():
@@ -39,9 +40,36 @@ def _table_cols(db, table: str) -> set[str]:
         return set()
 
 
+def _is_night_shift_in(in_ts) -> bool:
+    try:
+        return datetime.datetime.fromisoformat(str(in_ts)).time() >= NIGHT_SHIFT_START
+    except Exception:
+        return False
+
+
+def _any_real_out_after_in(db, employee_id: str, device_id, in_ts: str) -> bool:
+    return db.execute(
+        """
+        SELECT 1 FROM attendance
+        WHERE employee_id=? AND device_id=? AND punch_type='out'
+          AND ts > ?
+        LIMIT 1
+        """,
+        (employee_id, device_id, in_ts),
+    ).fetchone() is not None
+
+
 def _real_out_exists(db, employee_id: str, device_id, in_ts: str) -> bool:
-    day = str(in_ts or "")[:10]
-    day_end = f"{day}T23:59:59"
+    if _is_night_shift_in(in_ts):
+        try:
+            in_dt = datetime.datetime.fromisoformat(str(in_ts))
+        except Exception:
+            return False
+        out_until = (in_dt + datetime.timedelta(hours=12)).isoformat(timespec="seconds")
+    else:
+        day = str(in_ts or "")[:10]
+        out_until = f"{day}T23:59:59"
+
     return db.execute(
         """
         SELECT 1 FROM attendance
@@ -49,7 +77,7 @@ def _real_out_exists(db, employee_id: str, device_id, in_ts: str) -> bool:
           AND ts > ? AND ts <= ?
         LIMIT 1
         """,
-        (employee_id, device_id, in_ts, day_end),
+        (employee_id, device_id, in_ts, out_until),
     ).fetchone() is not None
 
 
@@ -237,7 +265,8 @@ def _fetch_long_session_rows(db) -> list[dict]:
 
 def _ensure_missing_checkout_proposals(db):
     today = datetime.date.today().isoformat()
-    now = _now_iso()
+    now_dt = datetime.datetime.now()
+    now = now_dt.isoformat(timespec="seconds")
     pending_cols = _table_cols(db, "pending_attendance")
 
     pending_rows = db.execute(
@@ -274,8 +303,22 @@ def _ensure_missing_checkout_proposals(db):
     for row in in_rows:
         if _real_out_exists(db, row["employee_id"], row["device_id"], row["ts"]):
             continue
+        if _any_real_out_after_in(db, row["employee_id"], row["device_id"], row["ts"]):
+            continue
 
-        proposed_ts = f"{str(row['ts'])[:10]}T23:59:00"
+        try:
+            in_dt = datetime.datetime.fromisoformat(str(row["ts"]))
+        except Exception:
+            continue
+
+        if _is_night_shift_in(row["ts"]):
+            deadline = in_dt + datetime.timedelta(hours=12)
+            if now_dt < deadline:
+                continue
+            proposed_ts = deadline.isoformat(timespec="seconds")
+        else:
+            proposed_ts = f"{str(row['ts'])[:10]}T23:59:00"
+
         exists = db.execute(
             """
             SELECT 1 FROM pending_attendance
