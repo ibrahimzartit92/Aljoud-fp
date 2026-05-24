@@ -86,6 +86,11 @@ def _can_accept_real_punch(db, employee_id: str, punch_type: str, ts: str) -> bo
     return latest == "in"
 
 
+def _is_future_punch(ts: str, tolerance_minutes: int = 5) -> bool:
+    punch_dt = datetime.datetime.fromisoformat(ts)
+    return punch_dt > datetime.datetime.now() + datetime.timedelta(minutes=tolerance_minutes)
+
+
 def _ensure_default_rbac(db, *, force: bool = False) -> None:
     """Seed the RBAC catalog in a safe, idempotent way.
 
@@ -764,6 +769,7 @@ def devices_fetch_punches(dev_id: int):
     inserted = 0
     skipped = 0
     skipped_sequence = 0
+    skipped_future = 0
 
     try:
         conn = zk.connect()
@@ -785,6 +791,15 @@ def devices_fetch_punches(dev_id: int):
 
         ts_iso = ts.isoformat(timespec="seconds")
         emp_id = str(p.user_id)
+
+        try:
+            if _is_future_punch(ts_iso):
+                skipped += 1
+                skipped_future += 1
+                continue
+        except Exception:
+            skipped += 1
+            continue
 
         exists = db.execute(
             "SELECT 1 FROM attendance WHERE employee_id=? AND device_id=? AND ts=?",
@@ -809,7 +824,7 @@ def devices_fetch_punches(dev_id: int):
         inserted += 1
 
     db.commit()
-    flash(f"Fetched: inserted={inserted}, skipped={skipped}, skipped_sequence={skipped_sequence}", "ok")
+    flash(f"Fetched: inserted={inserted}, skipped={skipped}, skipped_sequence={skipped_sequence}, skipped_future={skipped_future}", "ok")
     return redirect(url_for("admin.devices"))
 
 

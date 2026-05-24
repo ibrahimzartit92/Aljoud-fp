@@ -51,6 +51,11 @@ def can_accept_real_punch(cur, employee_id: str, punch_type: str, ts: str) -> bo
     return latest == "in"
 
 
+def is_future_punch(ts: str, tolerance_minutes: int = 5) -> bool:
+    punch_dt = datetime.datetime.fromisoformat(ts)
+    return punch_dt > datetime.datetime.now() + datetime.timedelta(minutes=tolerance_minutes)
+
+
 def main():
     con = sqlite3.connect(DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
@@ -134,6 +139,7 @@ def main():
 
         inserted = 0
         skipped_sequence = 0
+        skipped_future = 0
         newest_ts = last_ts
 
         for a in att_sorted:
@@ -148,6 +154,13 @@ def main():
                 continue
 
             punch_type = map_punch(getattr(a, "punch", None))
+
+            try:
+                if is_future_punch(ts_iso):
+                    skipped_future += 1
+                    continue
+            except Exception:
+                continue
 
             # De-dupe against BOTH pending_attendance and attendance
             # (so approving won't cause re-queue, and old imported rows won't reappear)

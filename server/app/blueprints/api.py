@@ -113,6 +113,11 @@ def _can_accept_real_punch(db, employee_id: str, punch_type: str, ts: str) -> bo
     return latest == "in"
 
 
+def _is_future_punch(ts: str, tolerance_minutes: int = 5) -> bool:
+    punch_dt = datetime.datetime.fromisoformat(ts)
+    return punch_dt > datetime.datetime.now() + datetime.timedelta(minutes=tolerance_minutes)
+
+
 @bp.post("/agent/push_punches")
 @require_agent_secret
 def agent_push_punches():
@@ -123,6 +128,7 @@ def agent_push_punches():
     inserted = 0
     skipped = 0
     skipped_sequence = 0
+    skipped_future = 0
     bad = 0
 
     punches_sorted = sorted(
@@ -146,6 +152,15 @@ def agent_push_punches():
 
         # لازم نعرف device_id حتى ما تدخل ضربات NULL
         if device_id is None:
+            bad += 1
+            continue
+
+        try:
+            if _is_future_punch(ts):
+                skipped += 1
+                skipped_future += 1
+                continue
+        except Exception:
             bad += 1
             continue
 
@@ -179,9 +194,9 @@ def agent_push_punches():
     db.commit()
     audit(
         "agent.push_punches",
-        {"received": len(punches), "inserted": inserted, "skipped": skipped, "skipped_sequence": skipped_sequence, "bad": bad},
+        {"received": len(punches), "inserted": inserted, "skipped": skipped, "skipped_sequence": skipped_sequence, "skipped_future": skipped_future, "bad": bad},
     )
-    return jsonify({"ok": True, "received": len(punches), "inserted": inserted, "skipped": skipped, "skipped_sequence": skipped_sequence, "bad": bad})
+    return jsonify({"ok": True, "received": len(punches), "inserted": inserted, "skipped": skipped, "skipped_sequence": skipped_sequence, "skipped_future": skipped_future, "bad": bad})
 
 
 @bp.get("/health")
