@@ -87,6 +87,32 @@ def _resolve_device_branch(db, punch: Dict[str, Any], payload: Dict[str, Any]) -
     return int(row["id"]), _norm_int(row["branch_id"])
 
 
+def _latest_punch_type_before(db, employee_id: str, ts: str) -> Optional[str]:
+    row = db.execute(
+        """
+        SELECT punch_type
+        FROM attendance
+        WHERE employee_id = ?
+          AND status = 'approved'
+          AND ts < ?
+          AND punch_type IN ('in', 'out')
+        ORDER BY ts DESC, id DESC
+        LIMIT 1
+        """,
+        (employee_id, ts),
+    ).fetchone()
+    return row["punch_type"] if row else None
+
+
+def _can_accept_real_punch(db, employee_id: str, punch_type: str, ts: str) -> bool:
+    if punch_type not in ("in", "out"):
+        return True
+    latest = _latest_punch_type_before(db, employee_id, ts)
+    if punch_type == "in":
+        return latest is None or latest == "out"
+    return latest == "in"
+
+
 @bp.post("/agent/push_punches")
 @require_agent_secret
 def agent_push_punches():
@@ -96,9 +122,15 @@ def agent_push_punches():
     db = get_db()
     inserted = 0
     skipped = 0
+    skipped_sequence = 0
     bad = 0
 
-    for p in punches:
+    punches_sorted = sorted(
+        punches,
+        key=lambda x: _norm_str(x.get("ts")) if isinstance(x, dict) else "",
+    )
+
+    for p in punches_sorted:
         if not isinstance(p, dict):
             bad += 1
             continue
@@ -115,6 +147,11 @@ def agent_push_punches():
         # لازم نعرف device_id حتى ما تدخل ضربات NULL
         if device_id is None:
             bad += 1
+            continue
+
+        if not _can_accept_real_punch(db, employee_id, punch_type, ts):
+            skipped += 1
+            skipped_sequence += 1
             continue
 
         try:
@@ -142,9 +179,9 @@ def agent_push_punches():
     db.commit()
     audit(
         "agent.push_punches",
-        {"received": len(punches), "inserted": inserted, "skipped": skipped, "bad": bad},
+        {"received": len(punches), "inserted": inserted, "skipped": skipped, "skipped_sequence": skipped_sequence, "bad": bad},
     )
-    return jsonify({"ok": True, "received": len(punches), "inserted": inserted, "skipped": skipped, "bad": bad})
+    return jsonify({"ok": True, "received": len(punches), "inserted": inserted, "skipped": skipped, "skipped_sequence": skipped_sequence, "bad": bad})
 
 
 @bp.get("/health")

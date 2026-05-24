@@ -60,6 +60,32 @@ def _table_cols(db, table: str) -> Set[str]:
         return set()
 
 
+def _latest_punch_type_before(db, employee_id: str, ts: str):
+    row = db.execute(
+        """
+        SELECT punch_type
+        FROM attendance
+        WHERE employee_id = ?
+          AND status = 'approved'
+          AND ts < ?
+          AND punch_type IN ('in', 'out')
+        ORDER BY ts DESC, id DESC
+        LIMIT 1
+        """,
+        (employee_id, ts),
+    ).fetchone()
+    return row["punch_type"] if row else None
+
+
+def _can_accept_real_punch(db, employee_id: str, punch_type: str, ts: str) -> bool:
+    if punch_type not in ("in", "out"):
+        return True
+    latest = _latest_punch_type_before(db, employee_id, ts)
+    if punch_type == "in":
+        return latest is None or latest == "out"
+    return latest == "in"
+
+
 def _ensure_default_rbac(db, *, force: bool = False) -> None:
     """Seed the RBAC catalog in a safe, idempotent way.
 
@@ -737,6 +763,7 @@ def devices_fetch_punches(dev_id: int):
     zk = ZK(ip, port=port, timeout=5)
     inserted = 0
     skipped = 0
+    skipped_sequence = 0
 
     try:
         conn = zk.connect()
@@ -746,7 +773,10 @@ def devices_fetch_punches(dev_id: int):
         flash(f"S30 error: {e}", "error")
         return redirect(url_for("admin.devices"))
 
-    punches = sorted(punches, key=lambda p: p.timestamp, reverse=True)[:limit]
+    punches = sorted(
+        sorted(punches, key=lambda p: p.timestamp, reverse=True)[:limit],
+        key=lambda p: p.timestamp,
+    )
 
     for p in punches:
         ts = p.timestamp
@@ -765,6 +795,10 @@ def devices_fetch_punches(dev_id: int):
             continue
 
         punch_type = "in" if p.punch == 0 else "out"
+        if not _can_accept_real_punch(db, emp_id, punch_type, ts_iso):
+            skipped += 1
+            skipped_sequence += 1
+            continue
 
         db.execute(
             """INSERT INTO attendance
@@ -775,7 +809,7 @@ def devices_fetch_punches(dev_id: int):
         inserted += 1
 
     db.commit()
-    flash(f"Fetched: inserted={inserted}, skipped={skipped}", "ok")
+    flash(f"Fetched: inserted={inserted}, skipped={skipped}, skipped_sequence={skipped_sequence}", "ok")
     return redirect(url_for("admin.devices"))
 
 

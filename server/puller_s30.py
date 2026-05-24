@@ -28,6 +28,29 @@ def iso(ts: datetime.datetime) -> str:
     return ts.replace(microsecond=0).isoformat()
 
 
+def latest_punch_type_before(cur, employee_id: str, ts: str):
+    row = cur.execute("""
+        SELECT punch_type
+        FROM attendance
+        WHERE employee_id = ?
+          AND status = 'approved'
+          AND ts < ?
+          AND punch_type IN ('in', 'out')
+        ORDER BY ts DESC, id DESC
+        LIMIT 1
+    """, (employee_id, ts)).fetchone()
+    return row["punch_type"] if row else None
+
+
+def can_accept_real_punch(cur, employee_id: str, punch_type: str, ts: str) -> bool:
+    if punch_type not in ("in", "out"):
+        return True
+    latest = latest_punch_type_before(cur, employee_id, ts)
+    if punch_type == "in":
+        return latest is None or latest == "out"
+    return latest == "in"
+
+
 def main():
     con = sqlite3.connect(DB_PATH, timeout=10)
     con.row_factory = sqlite3.Row
@@ -110,6 +133,7 @@ def main():
         att_sorted = sorted(att, key=lambda x: x.timestamp)
 
         inserted = 0
+        skipped_sequence = 0
         newest_ts = last_ts
 
         for a in att_sorted:
@@ -138,6 +162,12 @@ def main():
 
             if exists:
                 # still advance watermark
+                if (newest_ts is None) or (ts_iso > newest_ts):
+                    newest_ts = ts_iso
+                continue
+
+            if not can_accept_real_punch(cur, employee_id, punch_type, ts_iso):
+                skipped_sequence += 1
                 if (newest_ts is None) or (ts_iso > newest_ts):
                     newest_ts = ts_iso
                 continue
